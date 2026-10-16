@@ -53,11 +53,33 @@ jobs:
           DEST=andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
           cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
+          # Replace Google ML Kit translation with a bundled, offline bilingual dictionary.
+          cp "$BASE/anki/AnkiWordTranslator.java" "$DEST/anki/AnkiWordTranslator.java"
+          cp andors-trail-combat/overlay/AndorsTrail/app/build.gradle andors-upstream/AndorsTrail/app/build.gradle
+          cp andors-trail-combat/overlay/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt \
+             andors-upstream/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt
           # Fail the build if we accidentally lose save-compatibility/game features.
           test -s andors-upstream/AndorsTrail/res/raw/actorconditions_vampirism.json
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/controller/VampirismController.java
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/anki/AnkiWordTranslator.java
           grep -q 'recoverOrphanedBlockingActivityPause' "$DEST/activity/MainActivity.java"
+          ! grep -q 'com.google.mlkit' "$DEST/anki/AnkiWordTranslator.java"
+          ! grep -q 'com.google.mlkit' andors-upstream/AndorsTrail/app/build.gradle
+
+      - name: Generate packaged offline English-Vietnamese dictionary
+        run: |
+          python3 tools/build_offline_anki_dictionary.py andors-upstream/AndorsTrail/app/src/main/assets
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("andors-upstream/AndorsTrail/app/src/main/assets")
+          vi = (p / "anki_vi_en_dictionary.tsv").read_text(encoding="utf-8")
+          en = (p / "anki_en_vi_dictionary.tsv").read_text(encoding="utf-8")
+          assert len(vi.splitlines()) > 30000, "Vietnamese dictionary incomplete"
+          assert "độc lập\t" in vi, "compound missing"
+          assert "polite\tlịch sự" in en, "English test word missing"
+          print("Offline bilingual lookup assets validated")
+          PY
+
 
 
       - name: Configure stable test signing key
