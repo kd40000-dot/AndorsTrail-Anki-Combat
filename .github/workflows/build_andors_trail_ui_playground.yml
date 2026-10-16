@@ -28,16 +28,38 @@ jobs:
             andors-trail-combat
             tools
 
-      - name: Checkout current Andor's Trail upstream
+      - name: Checkout maintained October 15 game integration
+        uses: actions/checkout@v5
+        with:
+          repository: kd40000-dot/Anki-Android
+          ref: c2a148e5c35a4bb70a1beb407be4787947759381
+          path: stable-integration
+          sparse-checkout: andors-trail-combat
+
+      - name: Checkout pinned Andor's Trail upstream
         uses: actions/checkout@v5
         with:
           repository: AndorsTrailRelease/andors-trail
-          ref: master
+          ref: 0dfa1f63ea6d944df2c6d34e641000c09d3e917e
           path: andors-upstream
           sparse-checkout: AndorsTrail
 
       - name: Apply combat integration overlay
-        run: cp -a andors-trail-combat/overlay/. andors-upstream/
+        run: |
+          # Full latest known working integration; do NOT use the stale October 4 overlay.
+          cp -a stable-integration/andors-trail-combat/overlay/. andors-upstream/
+          # Apply only the three tightly-scoped tracked-pause fixes from this repo.
+          BASE=andors-trail-combat/overlay/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
+          DEST=andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
+          cp "$BASE/Dialogs.java" "$DEST/Dialogs.java"
+          cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
+          cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
+          # Fail the build if we accidentally lose save-compatibility/game features.
+          test -s andors-upstream/AndorsTrail/res/raw/actorconditions_vampirism.json
+          test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/controller/VampirismController.java
+          test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/anki/AnkiWordTranslator.java
+          grep -q 'scheduleMissingBlockingChildResultCheck' "$DEST/activity/MainActivity.java"
+
 
       - name: Configure stable test signing key
         run: |
@@ -68,6 +90,13 @@ jobs:
         run: |
           cd andors-upstream/AndorsTrail
           ./gradlew assembleDebug
+
+      - name: Verify APK archive
+        run: |
+          APK=$(find andors-upstream/AndorsTrail/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)
+          test -s "$APK"
+          unzip -t "$APK" > /dev/null
+          sha256sum "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
