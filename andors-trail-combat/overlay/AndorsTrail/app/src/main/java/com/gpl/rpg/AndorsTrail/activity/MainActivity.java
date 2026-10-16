@@ -85,9 +85,6 @@ public final class MainActivity
 	private boolean modelListenersSubscribed = false;
 	private boolean activityIsResumed = false;
 	private int resumeRequestGeneration = 0;
-	// Explicit ownership of the child whose return must release BLOCKING_ACTIVITY.
-	private int pendingBlockingRequestCode = -1;
-	private boolean pendingBlockingChildLeftScreen = false;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -171,54 +168,47 @@ public final class MainActivity
 		zoomOut.setAlpha(mainview.canZoomOut() ? 1.0f : 0.35f);
 	}
 
-	/** Called only by Dialogs when launching one of our blocking child activities. */
-	public void onBlockingChildStarted(int requestCode) {
-		pendingBlockingRequestCode = requestCode;
-		pendingBlockingChildLeftScreen = false;
-	}
-
-	/** Roll back ownership if the child failed to launch. */
-	public void onBlockingChildLaunchFailed(int requestCode) {
-		if (pendingBlockingRequestCode == requestCode) {
-			pendingBlockingRequestCode = -1;
-			pendingBlockingChildLeftScreen = false;
-		}
-	}
-
-	/** The normal result callback owns cleanup; never release a second time. */
-	private void onBlockingChildResult(int requestCode) {
-		onBlockingChildLaunchFailed(requestCode);
-		if (controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_ACTIVITY)) {
-			controllers.gameRoundController.releasePause(PauseReason.BLOCKING_ACTIVITY);
-		}
-	}
-
 	/**
-	 * Recover only an explicitly tracked child that actually paused this screen,
-	 * after its return to the foreground. Normal results clear the tracker.
-	 * This cannot trigger during initial saved-game loading.
+	 * Android may discard a conversation activity while the app is backgrounded
+	 * without delivering its expected result callback. The focused gameplay map
+	 * must not remain locked by that orphaned BLOCKING_ACTIVITY pause.
+	 *
+	 * Foreground focus survives activity recreation (unlike our old child token).
+	 * Delay cleanup until the loaded map truly has focus and no gameplay/dialog
+	 * transition is active; never interfere with saved-world initialization.
 	 */
-	private void scheduleMissingBlockingChildResultCheck() {
-		if (mainview == null || !pendingBlockingChildLeftScreen || pendingBlockingRequestCode < 0) return;
+	private void recoverOrphanedBlockingActivityPause() {
+		if (!activityIsResumed || mainview == null) return;
+		final int generation = resumeRequestGeneration;
 		mainview.postDelayed(() -> {
-			if (!activityIsResumed || !hasWindowFocus() || isFinishing()) return;
-			if (pendingBlockingRequestCode < 0 || !pendingBlockingChildLeftScreen) return;
-			if (world == null || world.model == null) return;
+			if (!activityIsResumed || generation != resumeRequestGeneration
+					|| isFinishing() || !hasWindowFocus()) return;
+			if (world == null || world.model == null || world.model.uiSelections == null
+					|| controllers == null) return;
 			if (!AndorsTrailApplication.getApplicationFromActivity(this).getWorldSetup().isSceneReady) return;
-			final int missedRequest = pendingBlockingRequestCode;
-			pendingBlockingRequestCode = -1;
-			pendingBlockingChildLeftScreen = false;
+			if (world.model.statistics.isDead() || world.model.uiSelections.isInCombat) return;
+			if (controllers.movementController.isMapTransitionInProgress()) return;
+			if (controllers.gameRoundController.isPauseReasonActive(PauseReason.ACTIVITY_HIDDEN)
+					|| controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_DIALOG)) return;
 			if (controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_ACTIVITY)) {
-				android.util.Log.w("AndorsTrail", "Recovering missing blocking child result for request " + missedRequest);
+				android.util.Log.w("AndorsTrail", "Recovering missing NPC/child-activity result after map focus restored");
 				controllers.gameRoundController.releasePause(PauseReason.BLOCKING_ACTIVITY);
+				controllers.mapController.applyCurrentMapReplacements(getResources(), true);
 			}
-		}, 350);
+		}, 250);
 	}
 
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus) {
 		super.onWindowFocusChanged(hasFocus);
-		if (hasFocus && activityIsResumed) scheduleMissingBlockingChildResultCheck();
+		if (hasFocus) recoverOrphanedBlockingActivityPause();
+	}
+
+	private void releaseBlockingActivityPauseFromResult() {
+		// Android may deliver a delayed result after the focused-map recovery.
+		if (controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_ACTIVITY)) {
+			controllers.gameRoundController.releasePause(PauseReason.BLOCKING_ACTIVITY);
+		}
 	}
 
 	@Override
@@ -226,7 +216,7 @@ public final class MainActivity
 		super.onActivityResult(requestCode, resultCode, data);
 		switch (requestCode) {
 		case INTENTREQUEST_MONSTERENCOUNTER:
-			onBlockingChildResult(requestCode);
+			releaseBlockingActivityPauseFromResult();
 			if (resultCode == Activity.RESULT_OK) {
 				controllers.combatController.enterCombat(CombatController.BeginTurnAs.player);
 			} else {
@@ -234,11 +224,11 @@ public final class MainActivity
 			}
 			break;
 		case INTENTREQUEST_CONVERSATION:
-			onBlockingChildResult(requestCode);
+			releaseBlockingActivityPauseFromResult();
 			controllers.mapController.applyCurrentMapReplacements(getResources(), true);
 			break;
 		case INTENTREQUEST_SAVEGAME:
-			onBlockingChildResult(requestCode);
+			releaseBlockingActivityPauseFromResult();
 			if (resultCode != Activity.RESULT_OK) break;
 			final int slot = data.getIntExtra("slot", 1);
 			if (save(slot)) {
@@ -284,7 +274,6 @@ public final class MainActivity
 
 	@Override
 	protected void onPause() {
-		if (pendingBlockingRequestCode >= 0) pendingBlockingChildLeftScreen = true;
 		activityIsResumed = false;
 		++resumeRequestGeneration; // Cancel any readiness retry from an older resume.
 		super.onPause();
@@ -325,7 +314,7 @@ public final class MainActivity
 		// Reattach the render/movement listeners before restoring gameplay input.
 		subscribeToModelChanges();
 		controllers.gameRoundController.onMainActivityResumed();
-		scheduleMissingBlockingChildResultCheck();
+		recoverOrphanedBlockingActivityPause();
 		// If a map transition delayed the last quicksave, flush it once ready.
 		saveDeferredQuicksaveIfNeeded();
 		if (world.tileManager.refreshPlayerAppearanceIfChanged(getResources(), world)) {
