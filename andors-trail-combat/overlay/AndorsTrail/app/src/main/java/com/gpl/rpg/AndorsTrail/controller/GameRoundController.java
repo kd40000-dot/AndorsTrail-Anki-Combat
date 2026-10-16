@@ -140,17 +140,6 @@ public final class GameRoundController implements TimedMessageTask.Callback {
 	 * Unmatched releases fail fast in development builds and are otherwise
 	 * logged and ignored so the timer cannot be restarted by accident.
 	 */
-	/**
-	 * Recover a blocking-activity pause left behind after Android returns to the
-	 * visible main map without delivering a matching activity result.
-	 * Idempotent because onActivityResult and window focus can race.
-	 */
-	public void releaseBlockingActivityPauseIfPresent() {
-		if (activePauses.contains(PauseReason.BLOCKING_ACTIVITY)) {
-			releasePause(PauseReason.BLOCKING_ACTIVITY);
-		}
-	}
-
 	public void releasePause(PauseReason reason) {
 		if (AndorsTrailApplication.DEVELOPMENT_DEBUGMESSAGES) {
 			if (!activePauses.contains(reason)) {
@@ -172,7 +161,11 @@ public final class GameRoundController implements TimedMessageTask.Callback {
 	 * such as when the user switches to another app or the device goes to sleep.
 	 */
 	public void onMainActivityPaused() {
-		acquirePause(PauseReason.ACTIVITY_HIDDEN);
+		// Android may deliver several pause/resume cycles around activity or
+		// surface recreation. Only a real visibility transition adds this reason.
+		if (!isPausedFor(PauseReason.ACTIVITY_HIDDEN)) {
+			acquirePause(PauseReason.ACTIVITY_HIDDEN);
+		}
 	}
 
 	/**
@@ -180,7 +173,27 @@ public final class GameRoundController implements TimedMessageTask.Callback {
 	 * is returning to an in-progress combat session.
 	 */
 	public void onMainActivityResumed() {
-		releasePause(PauseReason.ACTIVITY_HIDDEN);
+		if (isPausedFor(PauseReason.ACTIVITY_HIDDEN)) {
+			releasePause(PauseReason.ACTIVITY_HIDDEN);
+		} else {
+			// A resumed activity must resynchronize the derived input visibility,
+			// even when the lifecycle callback arrives more than once.
+			updateTimerState();
+		}
+	}
+
+	/** Human-readable diagnostic for map/D-pad taps that cannot start movement. */
+	public String getMovementBlockReason() {
+		if (!hasLoadedModel()) return "game is still loading";
+		if (hasPauseReasons()) return "pause reasons " + activePauses.toString();
+		if (world.model.uiSelections.isInCombat) {
+			return world.model.uiSelections.isPlayersCombatTurn
+					? "combat turn active" : "waiting for combat turn";
+		}
+		if (!world.model.uiSelections.isMainActivityVisible) {
+			return "gameplay visibility not resumed";
+		}
+		return "movement handler not responding";
 	}
 
 	/**
@@ -196,6 +209,11 @@ public final class GameRoundController implements TimedMessageTask.Callback {
 
 	private void restartWaitForNextRound() {
 		ticksUntilNextRound = Constants.TICKS_PER_ROUND;
+	}
+
+	/** Read-only pause-state query for matching a specific child activity result. */
+	public boolean isPauseReasonActive(PauseReason reason) {
+		return activePauses.contains(reason);
 	}
 
 	/**
@@ -248,6 +266,7 @@ public final class GameRoundController implements TimedMessageTask.Callback {
 	}
 	public void onNewPlayerRound() {
 		world.model.worldData.tickWorldTime();
+		VampirismController.onPlayerRound(controllers, world);
 		controllers.actorStatsController.applyConditionsToPlayer(world.model.player, false);
 		controllers.actorStatsController.applySkillEffectsForNewRound(world.model.player, world.model.currentMaps.map);
 		controllers.mapController.handleMapEvents(world.model.currentMaps.map, world.model.player.position, MapObject.MapObjectEvaluationType.afterEveryRound);
