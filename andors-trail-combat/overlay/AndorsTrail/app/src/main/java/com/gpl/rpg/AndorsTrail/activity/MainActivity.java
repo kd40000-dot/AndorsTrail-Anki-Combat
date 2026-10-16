@@ -14,6 +14,7 @@ import android.view.View.OnLongClickListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ListView;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -81,6 +82,12 @@ public final class MainActivity
 	//private ContextMenuInfo lastSelectedMenu = null;
 	private OnLongClickListener quickButtonLongClickListener = null;
 	private boolean deferredQuicksave = false;
+	private boolean modelListenersSubscribed = false;
+	private boolean activityIsResumed = false;
+	private int resumeRequestGeneration = 0;
+	// Explicit ownership of the child whose return must release BLOCKING_ACTIVITY.
+	private int pendingBlockingRequestCode = -1;
+	private boolean pendingBlockingChildLeftScreen = false;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
@@ -104,6 +111,20 @@ public final class MainActivity
 		toolboxview = (ToolboxView) findViewById(R.id.main_toolboxview);
 		statusview.registerToolboxViews(toolboxview, quickitemview);
 		toolboxview.setFocusReturnView(mainview);
+
+		// Two map-only camera controls. These do not alter density, UI scale,
+		// tile assets, inventory icons, or the hot-swapped hero sprites.
+		TextView zoomIn = (TextView) findViewById(R.id.main_zoom_in);
+		TextView zoomOut = (TextView) findViewById(R.id.main_zoom_out);
+		zoomIn.setOnClickListener(v -> {
+			mainview.adjustCameraZoom(1);
+			updateZoomButtonStates(zoomIn, zoomOut);
+		});
+		zoomOut.setOnClickListener(v -> {
+			mainview.adjustCameraZoom(-1);
+			updateZoomButtonStates(zoomIn, zoomOut);
+		});
+		updateZoomButtonStates(zoomIn, zoomOut);
 
 		// Hide toolbox when mainview gets focus, generally because some other activity closed and
 		// returned control to the playfield.  TODO: Check for touch mode compatibility
@@ -134,6 +155,8 @@ public final class MainActivity
 		quickitemview.setPosition();
 
 		// Define which views are in front of each other.
+		// Zoom controls are over the map, but under dialogs/combat and the status UI.
+		((LinearLayout) findViewById(R.id.main_zoom_controls)).bringToFront();
 		dpad.bringToFront();
 		quickitemview.bringToFront();
 		toolboxview.bringToFront();
@@ -141,12 +164,69 @@ public final class MainActivity
 		statusview.bringToFront();
 	}
 
+	private void updateZoomButtonStates(TextView zoomIn, TextView zoomOut) {
+		zoomIn.setEnabled(mainview.canZoomIn());
+		zoomOut.setEnabled(mainview.canZoomOut());
+		zoomIn.setAlpha(mainview.canZoomIn() ? 1.0f : 0.35f);
+		zoomOut.setAlpha(mainview.canZoomOut() ? 1.0f : 0.35f);
+	}
+
+	/** Called only by Dialogs when launching one of our blocking child activities. */
+	public void onBlockingChildStarted(int requestCode) {
+		pendingBlockingRequestCode = requestCode;
+		pendingBlockingChildLeftScreen = false;
+	}
+
+	/** Roll back ownership if the child failed to launch. */
+	public void onBlockingChildLaunchFailed(int requestCode) {
+		if (pendingBlockingRequestCode == requestCode) {
+			pendingBlockingRequestCode = -1;
+			pendingBlockingChildLeftScreen = false;
+		}
+	}
+
+	/** The normal result callback owns cleanup; never release a second time. */
+	private void onBlockingChildResult(int requestCode) {
+		onBlockingChildLaunchFailed(requestCode);
+		if (controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_ACTIVITY)) {
+			controllers.gameRoundController.releasePause(PauseReason.BLOCKING_ACTIVITY);
+		}
+	}
+
+	/**
+	 * Recover only an explicitly tracked child that actually paused this screen,
+	 * after its return to the foreground. Normal results clear the tracker.
+	 * This cannot trigger during initial saved-game loading.
+	 */
+	private void scheduleMissingBlockingChildResultCheck() {
+		if (mainview == null || !pendingBlockingChildLeftScreen || pendingBlockingRequestCode < 0) return;
+		mainview.postDelayed(() -> {
+			if (!activityIsResumed || !hasWindowFocus() || isFinishing()) return;
+			if (pendingBlockingRequestCode < 0 || !pendingBlockingChildLeftScreen) return;
+			if (world == null || world.model == null) return;
+			if (!AndorsTrailApplication.getApplicationFromActivity(this).getWorldSetup().isSceneReady) return;
+			final int missedRequest = pendingBlockingRequestCode;
+			pendingBlockingRequestCode = -1;
+			pendingBlockingChildLeftScreen = false;
+			if (controllers.gameRoundController.isPauseReasonActive(PauseReason.BLOCKING_ACTIVITY)) {
+				android.util.Log.w("AndorsTrail", "Recovering missing blocking child result for request " + missedRequest);
+				controllers.gameRoundController.releasePause(PauseReason.BLOCKING_ACTIVITY);
+			}
+		}, 350);
+	}
+
+	@Override
+	public void onWindowFocusChanged(boolean hasFocus) {
+		super.onWindowFocusChanged(hasFocus);
+		if (hasFocus && activityIsResumed) scheduleMissingBlockingChildResultCheck();
+	}
+
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		switch (requestCode) {
 		case INTENTREQUEST_MONSTERENCOUNTER:
-			controllers.gameRoundController.releaseBlockingActivityPauseIfPresent();
+			onBlockingChildResult(requestCode);
 			if (resultCode == Activity.RESULT_OK) {
 				controllers.combatController.enterCombat(CombatController.BeginTurnAs.player);
 			} else {
@@ -154,11 +234,11 @@ public final class MainActivity
 			}
 			break;
 		case INTENTREQUEST_CONVERSATION:
-			controllers.gameRoundController.releaseBlockingActivityPauseIfPresent();
+			onBlockingChildResult(requestCode);
 			controllers.mapController.applyCurrentMapReplacements(getResources(), true);
 			break;
 		case INTENTREQUEST_SAVEGAME:
-			controllers.gameRoundController.releaseBlockingActivityPauseIfPresent();
+			onBlockingChildResult(requestCode);
 			if (resultCode != Activity.RESULT_OK) break;
 			final int slot = data.getIntExtra("slot", 1);
 			if (save(slot)) {
@@ -204,6 +284,9 @@ public final class MainActivity
 
 	@Override
 	protected void onPause() {
+		if (pendingBlockingRequestCode >= 0) pendingBlockingChildLeftScreen = true;
+		activityIsResumed = false;
+		++resumeRequestGeneration; // Cancel any readiness retry from an older resume.
 		super.onPause();
 		controllers.gameRoundController.onMainActivityPaused();
 		controllers.movementController.stopMovement();
@@ -217,19 +300,38 @@ public final class MainActivity
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if (!AndorsTrailApplication.getApplicationFromActivity(this).getWorldSetup().isSceneReady) return;
+		activityIsResumed = true;
+		resumeWhenSceneReady(++resumeRequestGeneration);
+	}
 
-		if (world.model.statistics.isDead()) this.finish();
-		else {
-			controllers.gameRoundController.onMainActivityResumed();
-			// It's possible the pause() quicksave was deferred because the map was in transition.  If
-			// so, we do it now so the new map is saved.
-			saveDeferredQuicksaveIfNeeded();
-			if (world.tileManager.refreshPlayerAppearanceIfChanged(getResources(), world)) {
-				mainview.invalidate();
-			}
-			updateStatus();
+	/**
+	 * Scene loading and Android lifecycle resumes can race. Previously an
+	 * onResume arriving before isSceneReady would return permanently, leaving
+	 * ACTIVITY_HIDDEN active while inventory and zoom still worked. Finish
+	 * resuming as soon as the scene becomes ready, unless the activity pauses.
+	 */
+	private void resumeWhenSceneReady(final int generation) {
+		if (!activityIsResumed || generation != resumeRequestGeneration || isFinishing()) return;
+		if (!AndorsTrailApplication.getApplicationFromActivity(this).getWorldSetup().isSceneReady) {
+			mainview.postDelayed(() -> resumeWhenSceneReady(generation), 150);
+			return;
 		}
+
+		if (world.model == null || world.model.statistics.isDead()) {
+			finish();
+			return;
+		}
+		// onStart may have returned early while scene resources were loading.
+		// Reattach the render/movement listeners before restoring gameplay input.
+		subscribeToModelChanges();
+		controllers.gameRoundController.onMainActivityResumed();
+		scheduleMissingBlockingChildResultCheck();
+		// If a map transition delayed the last quicksave, flush it once ready.
+		saveDeferredQuicksaveIfNeeded();
+		if (world.tileManager.refreshPlayerAppearanceIfChanged(getResources(), world)) {
+			mainview.invalidate();
+		}
+		updateStatus();
 	}
 
 	// Close toolbox by toolbox toggle button.  Needed here since MainView loses focus when toolbox opens.
@@ -257,6 +359,8 @@ public final class MainActivity
 	}
 
 	private void unsubscribeFromModel() {
+		if (!modelListenersSubscribed) return;
+		modelListenersSubscribed = false;
 		activeConditions.unsubscribe();
 		combatview.unsubscribe();
 		mainview.unsubscribe();
@@ -271,6 +375,8 @@ public final class MainActivity
 	}
 
 	private void subscribeToModelChanges() {
+		if (modelListenersSubscribed) return;
+		modelListenersSubscribed = true;
 		controllers.mapController.worldEventListeners.add(this);
 		controllers.combatController.combatTurnListeners.add(this);
 		controllers.combatController.combatActionListeners.add(this);
