@@ -48,17 +48,16 @@ jobs:
         run: |
           # Full latest known working integration; do NOT use the stale October 4 overlay.
           cp -a stable-integration/andors-trail-combat/overlay/. andors-upstream/
-          # Apply only the three tightly-scoped tracked-pause fixes from this repo.
+          # Keep the working baseline Dialogs implementation unchanged; patch gameplay focus only.
           BASE=andors-trail-combat/overlay/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
           DEST=andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
-          cp "$BASE/Dialogs.java" "$DEST/Dialogs.java"
           cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
           # Fail the build if we accidentally lose save-compatibility/game features.
           test -s andors-upstream/AndorsTrail/res/raw/actorconditions_vampirism.json
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/controller/VampirismController.java
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/anki/AnkiWordTranslator.java
-          grep -q 'scheduleMissingBlockingChildResultCheck' "$DEST/activity/MainActivity.java"
+          grep -q 'recoverOrphanedBlockingActivityPause' "$DEST/activity/MainActivity.java"
 
 
       - name: Configure stable test signing key
