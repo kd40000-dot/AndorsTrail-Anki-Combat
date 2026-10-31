@@ -7,6 +7,7 @@ import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.media.MediaPlayer;
+import java.util.ArrayDeque;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -86,6 +87,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	private final Button ankiRecover;
 	private final AnkiCombatReviewClient ankiClient = new AnkiCombatReviewClient();
 	private MediaPlayer ankiAudioPlayer;
+	private final ArrayDeque<android.net.Uri> ankiAudioQueue = new ArrayDeque<>();
 	private final CombatController.AnkiCombatSession ankiSession;
 	private final Handler ankiMainHandler = new Handler(Looper.getMainLooper());
 	private boolean suppressAnkiTextWatcher = false;
@@ -501,7 +503,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 
 	private void beginAnkiQuestion(AnkiCombatReviewClient.ReviewCard card) {
-		releaseAnkiAudio();
+		// Never interrupt pronunciation merely because Momentum opens another card.
 		ankiSession.bypassForCurrentTurn = false;
 		ankiSession.card = card;
 		ankiSession.resetAttempt();
@@ -812,52 +814,50 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 
 	private void releaseAnkiAudio() {
-		if (ankiAudioPlayer == null) return;
-		try {
-			ankiAudioPlayer.stop();
-		} catch (Exception ignored) {
-		}
-		try {
-			ankiAudioPlayer.release();
-		} catch (Exception ignored) {
-		}
+		ankiAudioQueue.clear();
+		MediaPlayer old = ankiAudioPlayer;
 		ankiAudioPlayer = null;
+		if (old == null) return;
+		try { old.stop(); } catch (Exception ignored) {}
+		try { old.release(); } catch (Exception ignored) {}
 	}
 
-	private void playSubmittedAnswerAudio(
-			AnkiCombatReviewClient.ReviewCard card,
-			String typedAnswer) {
-		android.net.Uri audioUri = ankiClient.getAudioUri(card, typedAnswer);
-		if (audioUri == null) return;
-
-		releaseAnkiAudio();
-		try {
-			MediaPlayer player = MediaPlayer.create(
-					getContext().getApplicationContext(),
-					audioUri);
-			if (player == null) return;
-
-			ankiAudioPlayer = player;
-			player.setOnCompletionListener((MediaPlayer finished) -> {
-				if (ankiAudioPlayer == finished) {
+	private void playNextQueuedAnkiAudio() {
+		if (ankiAudioPlayer != null) return;
+		while (!ankiAudioQueue.isEmpty()) {
+			android.net.Uri uri = ankiAudioQueue.poll();
+			try {
+				MediaPlayer next = MediaPlayer.create(getContext().getApplicationContext(), uri);
+				if (next == null) continue;
+				ankiAudioPlayer = next;
+				next.setOnCompletionListener(finished -> {
+					if (ankiAudioPlayer == finished) ankiAudioPlayer = null;
+					try { finished.release(); } catch (Exception ignored) {}
+					playNextQueuedAnkiAudio();
+				});
+				next.setOnErrorListener((failed, what, extra) -> {
+					if (ankiAudioPlayer == failed) ankiAudioPlayer = null;
+					try { failed.release(); } catch (Exception ignored) {}
+					ankiMainHandler.post(this::playNextQueuedAnkiAudio);
+					return true;
+				});
+				next.start();
+				return;
+			} catch (Exception ignored) {
+				if (ankiAudioPlayer != null) {
+					try { ankiAudioPlayer.release(); } catch (Exception ignoredAgain) {}
 					ankiAudioPlayer = null;
 				}
-				finished.release();
-			});
-			player.setOnErrorListener((MediaPlayer failed, int what, int extra) -> {
-				if (ankiAudioPlayer == failed) {
-					ankiAudioPlayer = null;
-				}
-				try {
-					failed.release();
-				} catch (Exception ignored) {
-				}
-				return true;
-			});
-			player.start();
-		} catch (Exception ignored) {
-			releaseAnkiAudio();
+			}
 		}
+	}
+
+	private void playSubmittedAnswerAudio(AnkiCombatReviewClient.ReviewCard card, String typedAnswer) {
+		android.net.Uri uri = ankiClient.getAudioUri(card, typedAnswer);
+		if (uri == null) return;
+		// Each answer is played fully, even if the next Momentum question is already visible.
+		ankiAudioQueue.add(uri);
+		playNextQueuedAnkiAudio();
 	}
 
 	private void revealAnkiAnswer() {
