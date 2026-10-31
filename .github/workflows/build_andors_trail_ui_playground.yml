@@ -53,6 +53,13 @@ jobs:
           DEST=andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
           cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
+          # Never silently fall back to the older, turn-ending combat implementation.
+          cp "$BASE/controller/CombatController.java" "$DEST/controller/CombatController.java"
+          cp "$BASE/view/CombatView.java" "$DEST/view/CombatView.java"
+          cp andors-trail-combat/overlay/AndorsTrail/res/xml/preferences.xml andors-upstream/AndorsTrail/res/xml/preferences.xml
+          cp andors-trail-combat/overlay/AndorsTrail/res/values/anki_momentum_settings.xml andors-upstream/AndorsTrail/res/values/anki_momentum_settings.xml
+          grep -q 'momentumPausedForHealth' "$DEST/view/CombatView.java"
+          grep -q 'combatTurnListeners.onNewPlayerTurn()' "$DEST/controller/CombatController.java"
           # Replace Google ML Kit translation with a bundled, offline bilingual dictionary.
           cp "$BASE/anki/AnkiWordTranslator.java" "$DEST/anki/AnkiWordTranslator.java"
           cp andors-trail-combat/overlay/AndorsTrail/app/build.gradle andors-upstream/AndorsTrail/app/build.gradle
@@ -129,6 +136,7 @@ jobs:
           test -s "$APK"
           unzip -t "$APK" > /dev/null
           sha256sum "$APK"
+          sha256sum "$APK" > build-provenance/apk-sha256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
