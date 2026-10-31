@@ -58,7 +58,7 @@ jobs:
           test -s andors-upstream/AndorsTrail/res/raw/actorconditions_vampirism.json
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/controller/VampirismController.java
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/anki/AnkiWordTranslator.java
-          grep -q 'scheduleMissingBlockingChildResultCheck' "$DEST/activity/MainActivity.java"
+          grep -q 'recoverOrphanedBlockingActivityPause' "$DEST/activity/MainActivity.java"
 
 
       - name: Configure stable test signing key
