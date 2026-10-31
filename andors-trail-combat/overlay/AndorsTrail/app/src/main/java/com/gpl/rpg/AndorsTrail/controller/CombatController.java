@@ -286,7 +286,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			Monster m = getAdjacentAggressiveMonster();
 			if (m == null) return;
 			setCombatSelection(m);
-			executePlayerAttack();
+            // Selecting an adjacent enemy is not an attack. The next tap
+            // requests an Anki card, avoiding an unreviewed free hit.
 		}
 	}
 
@@ -324,7 +325,15 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	public void skipAnkiQuizTurn() {
 		if (!world.model.uiSelections.isPlayersCombatTurn) return;
 		ankiQuizGateActive = false;
-		endPlayerTurn();
+        if (!useAPs(world.model.player.getAttackCost())) {
+            endPlayerTurn();
+        } else {
+            playerActionCompleted();
+            if (world.model.uiSelections.isInCombat && world.model.uiSelections.isPlayersCombatTurn
+                    && world.model.player.hasAPs(world.model.player.getAttackCost())) {
+                combatTurnListeners.onNewPlayerTurn();
+            }
+        }
 	}
 
 	public void executeAnkiQuizAttack() {
@@ -399,14 +408,19 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			quizAttackEndsTurn = false;
 			if (!world.model.uiSelections.isInCombat) return;
 			if (canExitCombat()) {
-				exitCombat(true);
-			} else {
-				endPlayerTurn();
-			}
-			return;
-		}
+                exitCombat(true);
+            } else {
+                playerActionCompleted();
+                if (world.model.uiSelections.isInCombat
+                        && world.model.uiSelections.isPlayersCombatTurn
+                        && world.model.player.hasAPs(world.model.player.getAttackCost())) {
+                    combatTurnListeners.onNewPlayerTurn();
+                }
+            }
+            return;
+        }
 
-		playerActionCompleted();
+        playerActionCompleted();
 	}
 
 	public void playerKilledMonster(Monster killedMonster) {
@@ -414,6 +428,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 		Loot loot = world.model.currentMaps.map.getBagOrCreateAt(killedMonster.position);
 		killedMonster.createLoot(loot, player);
+		VampirismController.onPlayerKilledMonster(controllers, world, killedMonster, loot);
 
 		controllers.monsterSpawnController.remove(world.model.currentMaps.map, killedMonster);
 		controllers.effectController.addSplatter(world.model.currentMaps.map, killedMonster);
@@ -485,6 +500,11 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 		int fleeChanceBias = world.model.player.getSkillLevel(SkillCollection.SkillID.evasion) * SkillCollection.PER_SKILLPOINT_INCREASE_EVASION_FLEE_CHANCE_PERCENTAGE;
 		if (Constants.roll100(Constants.FLEE_FAIL_CHANCE_PERCENT - fleeChanceBias)) {
+			// startFlee() clears the combat target so directional input can pick an
+			// escape route. Restore an adjacent aggressor immediately when the flee
+			// roll fails, before the monster turn starts, so the monster/status bar
+			// remains visible when the next Anki question appears.
+			selectNextAggressiveMonster();
 			fleeingFailed();
 			return;
 		}
@@ -697,6 +717,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		controllers.actorStatsController.setActorMaxAP(world.model.player);
 		if (!isFirstRound) controllers.gameRoundController.onNewPlayerRound();
 		world.model.uiSelections.isPlayersCombatTurn = true;
+
 		combatTurnListeners.onNewPlayerTurn();
 	}
 
@@ -838,6 +859,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	public void endOfCombatRound() {
 		world.model.worldData.tickWorldTime();
 		controllers.gameRoundController.resetRoundTimers();
+		VampirismController.onPlayerRound(controllers, world);
 		controllers.actorStatsController.applyConditionsToPlayer(world.model.player, false);
 		controllers.actorStatsController.applyConditionsToMonsters(world.model.currentMaps.map, true);
 	}
