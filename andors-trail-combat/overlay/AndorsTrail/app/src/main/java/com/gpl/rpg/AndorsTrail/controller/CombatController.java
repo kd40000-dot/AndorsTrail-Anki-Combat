@@ -286,7 +286,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			Monster m = getAdjacentAggressiveMonster();
 			if (m == null) return;
 			setCombatSelection(m);
-			executePlayerAttack();
+            // Selecting an adjacent enemy is not an attack. The next tap
+            // requests an Anki card, avoiding an unreviewed free hit.
 		}
 	}
 
