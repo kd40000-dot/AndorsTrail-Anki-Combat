@@ -107,6 +107,17 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Record reproducible source provenance
+        run: |
+          mkdir -p build-provenance
+          printf 'integration_repository=kd40000-dot/AndorsTrail-Anki-Combat\n' > build-provenance/build-info.txt
+          printf 'integration_commit=%s\n' "$GITHUB_SHA" >> build-provenance/build-info.txt
+          printf 'maintained_integration_commit=c2a148e5c35a4bb70a1beb407be4787947759381\n' >> build-provenance/build-info.txt
+          printf 'upstream_commit=0dfa1f63ea6d944df2c6d34e641000c09d3e917e\n' >> build-provenance/build-info.txt
+          (cd andors-upstream && git status --short) > build-provenance/overlay-status.txt
+          tar -czf build-provenance/complete-build-source.tar.gz -C andors-upstream AndorsTrail
+          sha256sum build-provenance/complete-build-source.tar.gz > build-provenance/source-sha256.txt
+
       - name: Assemble UI test APK
         run: |
           cd andors-upstream/AndorsTrail
@@ -126,3 +137,12 @@ jobs:
           path: andors-upstream/AndorsTrail/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload exact build source and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: andors-trail-ui-exact-build-source
+          path: build-provenance/
+          if-no-files-found: warn
+          retention-days: 90
