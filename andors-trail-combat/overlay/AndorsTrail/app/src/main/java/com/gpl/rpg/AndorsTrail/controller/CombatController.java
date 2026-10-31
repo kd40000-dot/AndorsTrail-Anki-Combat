@@ -375,7 +375,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
             playerActionCompleted();
             if (world.model.uiSelections.isInCombat && world.model.uiSelections.isPlayersCombatTurn
                     && world.model.player.hasAPs(world.model.player.getAttackCost())) {
-                combatTurnListeners.onNewPlayerTurn();
+                continueMomentumOrRequestCard();
             }
         }
 	}
@@ -445,6 +445,38 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		
 	}
 
+    private boolean momentumHealthAllowsAutoAttack() {
+        android.content.SharedPreferences prefs =
+                android.preference.PreferenceManager.getDefaultSharedPreferences(controllers.getContext());
+        int threshold = 30;
+        try { threshold = Integer.parseInt(prefs.getString("anki_momentum_pause_hp", "30")); }
+        catch (Exception ignored) {}
+        Player p = world.model.player;
+        return threshold <= 0 || p.getMaxHP() <= 0
+                || (long) p.getCurrentHP() * 100L > (long) p.getMaxHP() * threshold;
+    }
+
+    private void continueMomentumOrRequestCard() {
+        if (!world.model.uiSelections.isInCombat
+                || !world.model.uiSelections.isPlayersCombatTurn
+                || !world.model.player.hasAPs(world.model.player.getAttackCost())) return;
+        if (canExitCombat()) return;
+        if (hasAnkiMomentumAttack() && momentumHealthAllowsAutoAttack()) {
+            new Handler().postDelayed(() -> {
+                if (world.model.uiSelections.isInCombat
+                        && world.model.uiSelections.isPlayersCombatTurn
+                        && !ankiQuizGateActive
+                        && hasAnkiMomentumAttack()
+                        && momentumHealthAllowsAutoAttack()
+                        && !controllers.effectController.isRunningVisualEffect()) {
+                    executePlayerAttack();
+                }
+            }, 220);
+        } else if (!hasAnkiMomentumAttack()) {
+            combatTurnListeners.onNewPlayerTurn();
+        }
+    }
+
 	private void playerAttackCompleted() {
 		if (world.model.uiSelections.selectedMonster == null) {
 			selectNextAggressiveMonster();
@@ -460,7 +492,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
                 if (world.model.uiSelections.isInCombat
                         && world.model.uiSelections.isPlayersCombatTurn
                         && world.model.player.hasAPs(world.model.player.getAttackCost())) {
-                    combatTurnListeners.onNewPlayerTurn();
+                    continueMomentumOrRequestCard();
                 }
             }
             return;
