@@ -412,7 +412,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	private void executePlayerAttack() {
-		if (!hasAnkiMomentumAttack()) return;
+		if (!hasAnkiMomentumAttack() && !ankiCombatSession.bypassForCurrentTurn) return;
 		if (controllers.effectController.isRunningVisualEffect()) {
 			quizAttackEndsTurn = false;
 			return;
