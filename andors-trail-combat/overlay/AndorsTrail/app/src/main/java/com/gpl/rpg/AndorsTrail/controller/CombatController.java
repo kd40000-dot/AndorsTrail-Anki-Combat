@@ -499,6 +499,11 @@ public final class CombatController implements VisualEffectCompletedCallback {
         }
 
         playerActionCompleted();
+        if (ankiMomentumStage > 0
+                && world.model.uiSelections.isInCombat
+                && world.model.uiSelections.isPlayersCombatTurn) {
+            continueMomentumOrRequestCard();
+        }
 	}
 
 	public void playerKilledMonster(Monster killedMonster) {
