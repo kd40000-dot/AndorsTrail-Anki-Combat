@@ -574,7 +574,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 				}
 
 				if (result == null) {
-					fallbackToNormalCombat("No Anki cards are due.");
+					fallbackToNormalCombat(null); // No due cards is normal; do not show a toast.
 				} else {
 					beginAnkiQuestion(result);
 				}
