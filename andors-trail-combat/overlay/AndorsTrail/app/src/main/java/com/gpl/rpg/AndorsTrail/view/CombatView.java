@@ -143,9 +143,11 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		attackMoveButton.setOnClickListener((View v) -> {
 			if (world.model.uiSelections.isPlayersCombatTurn
                     && world.model.uiSelections.selectedMonster != null
-                    && !c.isAnkiQuizGateActive()) {
-                // Manual attack still works when automatic Momentum is paused.
-                loadAnkiCardForPlayerTurn();
+                    && !c.isAnkiQuizGateActive()
+                    && ankiQuiz.getVisibility() != View.VISIBLE) {
+                // Higher Momentum stages may attack again without another card.
+                if (c.hasAnkiMomentumAttack()) c.executeMoveAttack(0, 0);
+                else loadAnkiCardForPlayerTurn();
             } else {
                 c.executeMoveAttack(0, 0);
             }
@@ -904,6 +906,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 			ankiSession.operationId++;
 			ankiSession.resetAttempt();
 			ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.IDLE);
+			controllers.combatController.recordAnkiMomentumResult(false);
 			controllers.combatController.skipAnkiQuizTurn();
 			return;
 		}
@@ -954,6 +957,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		boolean shouldAttack = ankiSession.pendingShouldAttack;
 		int recordedEase = ankiSession.pendingEffectiveEase;
 		controllers.combatController.setLastAnkiRecordedEase(recordedEase);
+		controllers.combatController.recordAnkiMomentumResult(shouldAttack);
 		ankiSession.resetAll();
 		// Prevent the watchdog from loading another card in the small window before
 		// the attack/skip-turn transition completes.
@@ -1310,7 +1314,13 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
             hideAnkiKeyboardAndClearFocus();
             return;
         }
-		loadAnkiCardForPlayerTurn();
+		if (controllers.combatController.ankiMomentumNeedsCard()) loadAnkiCardForPlayerTurn();
+        else {
+            // This turn/enemy already has its review. Continue without asking again.
+            controllers.combatController.setAnkiQuizGateActive(false);
+            ankiQuiz.setVisibility(View.GONE);
+            actionBar.setVisibility(View.VISIBLE);
+        }
 	}
 
 	@Override
