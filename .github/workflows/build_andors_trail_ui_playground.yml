@@ -59,6 +59,7 @@ jobs:
           cp andors-trail-combat/overlay/AndorsTrail/res/xml/preferences.xml andors-upstream/AndorsTrail/res/xml/preferences.xml
           cp andors-trail-combat/overlay/AndorsTrail/res/values/anki_momentum_settings.xml andors-upstream/AndorsTrail/res/values/anki_momentum_settings.xml
           grep -q 'momentumPausedForHealth' "$DEST/view/CombatView.java"
+          grep -q 'anki_momentum_pause_hp' andors-upstream/AndorsTrail/res/xml/preferences.xml
           grep -q 'combatTurnListeners.onNewPlayerTurn()' "$DEST/controller/CombatController.java"
           # Replace Google ML Kit translation with a bundled, offline bilingual dictionary.
           cp "$BASE/anki/AnkiWordTranslator.java" "$DEST/anki/AnkiWordTranslator.java"
