@@ -3,7 +3,7 @@ name: Build Andor's Trail UI Playground APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'chatgpt/momentum-hp-safety-checkpoint-2026-10-31']
     paths:
       - 'andors-trail-combat/overlay/**'
       - '.github/workflows/build_andors_trail_ui_playground.yml'
