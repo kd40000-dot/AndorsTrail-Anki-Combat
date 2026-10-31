@@ -45,7 +45,7 @@ jobs:
           # Apply only the three tightly-scoped tracked-pause fixes from this repo.
           BASE=andors-trail-combat/overlay/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
           DEST=andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail
-          cp "$BASE/Dialogs.java" "$DEST/Dialogs.java"
+          # Keep Dialogs.java paired with the pinned integration MainActivity.
           cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
           cp "$BASE/controller/CombatController.java" "$DEST/controller/CombatController.java"
