@@ -47,6 +47,12 @@ jobs:
           cp "$BASE/Dialogs.java" "$DEST/Dialogs.java"
           cp "$BASE/activity/MainActivity.java" "$DEST/activity/MainActivity.java"
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
+          cp "$BASE/controller/CombatController.java" "$DEST/controller/CombatController.java"
+          cp "$BASE/view/CombatView.java" "$DEST/view/CombatView.java"
+          cp andors-trail-combat/overlay/AndorsTrail/res/xml/preferences.xml andors-upstream/AndorsTrail/res/xml/preferences.xml
+          cp andors-trail-combat/overlay/AndorsTrail/res/values/anki_momentum_settings.xml andors-upstream/AndorsTrail/res/values/anki_momentum_settings.xml
+          grep -q 'momentumPausedForHealth' "$DEST/view/CombatView.java"
+          grep -q 'combatTurnListeners.onNewPlayerTurn()' "$DEST/controller/CombatController.java"
           # Fail the build if we accidentally lose save-compatibility/game features.
           test -s andors-upstream/AndorsTrail/res/raw/actorconditions_vampirism.json
           test -s andors-upstream/AndorsTrail/app/src/main/java/com/gpl/rpg/AndorsTrail/controller/VampirismController.java
@@ -79,6 +85,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Record source provenance
+        run: |
+          mkdir -p build-provenance
+          printf 'integration_commit=%s\n' "$GITHUB_SHA" > build-provenance/build-info.txt
+          printf 'baseline_commit=c2a148e5c35a4bb70a1beb407be4787947759381\n' >> build-provenance/build-info.txt
+          printf 'upstream_commit=0dfa1f63ea6d944df2c6d34e641000c09d3e917e\n' >> build-provenance/build-info.txt
+          tar -czf build-provenance/complete-build-source.tar.gz -C andors-upstream AndorsTrail
+          sha256sum build-provenance/complete-build-source.tar.gz > build-provenance/source-sha256.txt
+
       - name: Build and test
         run: |
           cd andors-upstream/AndorsTrail
@@ -90,6 +105,7 @@ jobs:
           test -s "$APK"
           unzip -t "$APK" > /dev/null
           sha256sum "$APK"
+          sha256sum "$APK" > build-provenance/apk-sha256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -98,3 +114,12 @@ jobs:
           path: andors-upstream/AndorsTrail/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload exact source used in APK build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: andors-trail-combat-exact-build-source
+          path: build-provenance/
+          retention-days: 90
+          if-no-files-found: warn
