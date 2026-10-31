@@ -45,6 +45,48 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private boolean ankiQuizGateActive = false;
 	// A correct quiz answer gives exactly one attack, then hands the turn to the monsters.
 	private boolean quizAttackEndsTurn = false;
+	// Momentum: 0 = card/action, 1 = card/player turn, 2 = card/enemy.
+	// Three consecutive correct reviews advance one stage. A wrong attempt resets progress.
+	private int ankiMomentumStage = 0;
+	private int ankiMomentumCorrectStreak = 0;
+	private boolean ankiTurnAuthorized = false;
+	private Monster ankiEnemyAuthorized = null;
+	private boolean ankiActionAuthorized = false;
+
+	public int getAnkiMomentumStage() { return ankiMomentumStage; }
+	public boolean hasAnkiMomentumAttack() {
+		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return false;
+		if (ankiMomentumStage == 0) return ankiActionAuthorized;
+		if (ankiMomentumStage == 1) return ankiTurnAuthorized;
+		return world.model.uiSelections.selectedMonster != null
+				&& world.model.uiSelections.selectedMonster == ankiEnemyAuthorized;
+	}
+	public void recordAnkiMomentumResult(boolean correct) {
+		if (!correct) {
+			ankiMomentumStage = 0;
+			ankiMomentumCorrectStreak = 0;
+			ankiTurnAuthorized = false;
+			ankiEnemyAuthorized = null;
+			ankiActionAuthorized = false;
+			return;
+		}
+		if (ankiMomentumStage < 2 && ++ankiMomentumCorrectStreak >= 3) {
+			ankiMomentumStage++;
+			ankiMomentumCorrectStreak = 0;
+		}
+		ankiActionAuthorized = true;
+		ankiTurnAuthorized = true;
+		ankiEnemyAuthorized = world.model.uiSelections.selectedMonster;
+	}
+	public boolean ankiMomentumNeedsCard() { return !hasAnkiMomentumAttack(); }
+	private void resetAnkiMomentum() {
+		ankiMomentumStage = 0;
+		ankiMomentumCorrectStreak = 0;
+		ankiTurnAuthorized = false;
+		ankiEnemyAuthorized = null;
+		ankiActionAuthorized = false;
+	}
+
 
 	/**
 	 * Retained Anki-combat state. CombatController belongs to the application ControllerContext,
@@ -142,6 +184,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		resetCombatState();
 
 		if (whoseTurn != BeginTurnAs.continueLastTurn) {
+			resetAnkiMomentum();
 			ankiQuizGateActive = false;
 			ankiCombatSession.resetAll();
 		} else if (ankiCombatSession.phase != AnkiCombatSession.Phase.IDLE
@@ -161,6 +204,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	public void exitCombat(boolean pickupLootBags, boolean canceledCombat) {
 		ankiQuizGateActive = false;
 		quizAttackEndsTurn = false;
+		resetAnkiMomentum();
 		ankiCombatSession.resetAll();
 		setCombatSelection(null, null);
 		world.model.uiSelections.isInCombat = false;
@@ -368,6 +412,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	private void executePlayerAttack() {
+		if (!hasAnkiMomentumAttack()) return;
 		if (controllers.effectController.isRunningVisualEffect()) {
 			quizAttackEndsTurn = false;
 			return;
@@ -376,6 +421,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			quizAttackEndsTurn = false;
 			return;
 		}
+		if (ankiMomentumStage == 0) ankiActionAuthorized = false;
 		final Monster target = world.model.uiSelections.selectedMonster;
 		final Coord attackPosition = world.model.uiSelections.selectedPosition;
 
@@ -717,7 +763,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		controllers.actorStatsController.setActorMaxAP(world.model.player);
 		if (!isFirstRound) controllers.gameRoundController.onNewPlayerRound();
 		world.model.uiSelections.isPlayersCombatTurn = true;
-
+		ankiTurnAuthorized = false;
+		ankiActionAuthorized = false;
 		combatTurnListeners.onNewPlayerTurn();
 	}
 
