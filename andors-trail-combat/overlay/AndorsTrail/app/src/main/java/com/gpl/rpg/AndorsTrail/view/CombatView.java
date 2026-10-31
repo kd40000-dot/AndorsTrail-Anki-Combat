@@ -143,8 +143,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		attackMoveButton.setOnClickListener((View v) -> {
 			if (world.model.uiSelections.isPlayersCombatTurn
                     && world.model.uiSelections.selectedMonster != null
-                    && !c.isAnkiQuizGateActive()
-                    && ankiQuiz.getVisibility() != View.VISIBLE) {
+                    && !c.isAnkiQuizGateActive()) {
                 // Higher Momentum stages may attack again without another card.
                 if (c.hasAnkiMomentumAttack()) c.executeMoveAttack(0, 0);
                 else loadAnkiCardForPlayerTurn();
