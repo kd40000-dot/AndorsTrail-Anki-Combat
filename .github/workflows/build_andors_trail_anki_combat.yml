@@ -50,6 +50,9 @@ jobs:
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
           cp "$BASE/controller/CombatController.java" "$DEST/controller/CombatController.java"
           cp "$BASE/view/CombatView.java" "$DEST/view/CombatView.java"
+          cp "$BASE/anki/AnkiWordTranslator.java" "$DEST/anki/AnkiWordTranslator.java"
+          cp andors-trail-combat/overlay/AndorsTrail/app/build.gradle andors-upstream/AndorsTrail/app/build.gradle
+          cp andors-trail-combat/overlay/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt andors-upstream/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt
           cp andors-trail-combat/overlay/AndorsTrail/res/xml/preferences.xml andors-upstream/AndorsTrail/res/xml/preferences.xml
           cp andors-trail-combat/overlay/AndorsTrail/res/values/anki_momentum_settings.xml andors-upstream/AndorsTrail/res/values/anki_momentum_settings.xml
           grep -q 'momentumPausedForHealth' "$DEST/view/CombatView.java"
@@ -85,6 +88,22 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Generate packaged offline English-Vietnamese dictionary
+        run: |
+          python3 tools/build_offline_anki_dictionary.py andors-upstream/AndorsTrail/app/src/main/assets
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("andors-upstream/AndorsTrail/app/src/main/assets")
+          vi = (p / "anki_vi_en_dictionary.tsv").read_text(encoding="utf-8")
+          en = (p / "anki_en_vi_dictionary.tsv").read_text(encoding="utf-8")
+          assert len(vi.splitlines()) > 30000, "Vietnamese dictionary incomplete"
+          assert "độc lập\t" in vi, "compound missing"
+          assert "polite\tlịch sự" in en, "English test word missing"
+          print("Offline bilingual lookup assets validated")
+          PY
+
+
 
       - name: Record source provenance
         run: |
