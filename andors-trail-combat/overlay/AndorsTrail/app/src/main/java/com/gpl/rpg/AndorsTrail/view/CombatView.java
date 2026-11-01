@@ -56,6 +56,8 @@ import com.gpl.rpg.AndorsTrail.util.Coord;
 
 public final class CombatView extends RelativeLayout implements CombatSelectionListener, CombatTurnListener, ActorStatsListener, ActorConditionListener {
 	private final RangeBar playerAPBar;
+	private final TextView momentumStageLabel;
+	private final TextView momentumQuizStageLabel;
 	private final Button attackMoveButton;
 	private final Button endTurnButton;
 	private final Button fleeButton;
@@ -133,6 +135,8 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 		setFocusable(false);
 		inflate(context, R.layout.combatview, this);
+		momentumStageLabel = findViewById(R.id.combatview_momentum_stage);
+		momentumQuizStageLabel = findViewById(R.id.combatview_anki_momentum_stage);
 		//Prevents mis-taps from registering as main area taps by going through the combat view.
 		findViewById(R.id.combatview_fixedarea).setClickable(true);
 
@@ -758,7 +762,18 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		}
 	}
 
+	private void refreshMomentumStageIndicator() {
+		int stage = controllers.combatController.getAnkiMomentumStage();
+		int streak = controllers.combatController.getAnkiMomentumCorrectStreak();
+		String mode = stage == 0 ? "Action" : stage == 1 ? "Turn" : "Enemy";
+		String progress = stage < 2 ? " (" + streak + "/3)" : "";
+		momentumStageLabel.setText("M" + (stage + 1));
+		momentumQuizStageLabel.setText("Momentum " + (stage + 1) + " · " + mode + progress);
+		momentumStageLabel.setContentDescription("Momentum stage " + (stage + 1) + ", " + mode + progress);
+	}
+
 	private void syncAnkiUiFromSession(boolean allowLoad) {
+		refreshMomentumStageIndicator();
 		if (!isAttachedToWindow()) return;
 
 		if (!world.model.uiSelections.isInCombat) {
@@ -957,6 +972,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		int recordedEase = ankiSession.pendingEffectiveEase;
 		controllers.combatController.setLastAnkiRecordedEase(recordedEase);
 		controllers.combatController.recordAnkiMomentumResult(shouldAttack);
+		refreshMomentumStageIndicator();
 		ankiSession.resetAll();
 		// Prevent the watchdog from loading another card in the small window before
 		// the attack/skip-turn transition completes.
@@ -1100,6 +1116,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 	
 	private void updateTurnInfo(Monster currentActiveMonster) {
+		refreshMomentumStageIndicator();
 		if (currentActiveMonster != null) {
 			ankiQuiz.setVisibility(View.GONE);
 			ankiFlee.setVisibility(View.GONE);
