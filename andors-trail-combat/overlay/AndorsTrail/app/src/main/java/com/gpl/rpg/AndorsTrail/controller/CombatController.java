@@ -54,6 +54,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private boolean ankiActionAuthorized = false;
 
 	public int getAnkiMomentumStage() { return ankiMomentumStage; }
+	public int getAnkiMomentumCorrectStreak() { return ankiMomentumCorrectStreak; }
 	public boolean hasAnkiMomentumAttack() {
 		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return false;
 		if (ankiMomentumStage == 0) return ankiActionAuthorized;
@@ -80,8 +81,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 	public boolean ankiMomentumNeedsCard() { return !hasAnkiMomentumAttack(); }
 	private void resetAnkiMomentum() {
-		ankiMomentumStage = 0;
-		ankiMomentumCorrectStreak = 0;
+		// Keep earned Momentum across encounters; only clear per-combat authorization.
 		ankiTurnAuthorized = false;
 		ankiEnemyAuthorized = null;
 		ankiActionAuthorized = false;
