@@ -30,6 +30,19 @@
                 android:text="@string/combat_attack"
                 android:textSize="@dimen/actionbar_text" />
 
+            <TextView
+                android:id="@+id/combatview_momentum_stage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingLeft="4dp"
+                android:paddingRight="6dp"
+                android:gravity="center"
+                android:text="M1"
+                android:textColor="?attr/ui_theme_dialogue_light_color"
+                android:textStyle="bold"
+                android:textSize="12sp"
+                android:contentDescription="Momentum stage" />
+
             <com.gpl.rpg.AndorsTrail.view.RangeBar
                 android:id="@+id/combatview_status"
                 android:layout_width="0dp"
@@ -157,6 +170,17 @@
         android:orientation="vertical"
         android:padding="8dp"
         android:visibility="gone">
+
+        <TextView
+            android:id="@+id/combatview_anki_momentum_stage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingBottom="3dp"
+            android:text="Momentum 1 · Action"
+            android:textStyle="bold"
+            android:textColor="?attr/ui_theme_dialogue_light_color"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/combatview_anki_status"
