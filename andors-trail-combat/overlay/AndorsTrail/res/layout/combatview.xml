@@ -225,6 +225,17 @@
                 android:visibility="gone" />
         </RelativeLayout>
 
+        <TextView
+            android:id="@+id/combatview_anki_word_translation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:textSize="15sp"
+            android:textColor="?attr/ui_theme_dialogue_light_color"
+            android:visibility="gone" />
+
         <EditText
             android:id="@+id/combatview_anki_input"
             style="@style/AndorsTrail_Style_LightFrame"
