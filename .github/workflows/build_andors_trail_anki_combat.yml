@@ -50,6 +50,8 @@ jobs:
           cp "$BASE/controller/GameRoundController.java" "$DEST/controller/GameRoundController.java"
           cp "$BASE/controller/CombatController.java" "$DEST/controller/CombatController.java"
           cp "$BASE/view/CombatView.java" "$DEST/view/CombatView.java"
+          cp andors-trail-combat/overlay/AndorsTrail/res/layout/combatview.xml andors-upstream/AndorsTrail/res/layout/combatview.xml
+          grep -q 'combatview_anki_momentum_stage' andors-upstream/AndorsTrail/res/layout/combatview.xml
           cp "$BASE/anki/AnkiWordTranslator.java" "$DEST/anki/AnkiWordTranslator.java"
           cp andors-trail-combat/overlay/AndorsTrail/app/build.gradle andors-upstream/AndorsTrail/app/build.gradle
           cp andors-trail-combat/overlay/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt andors-upstream/AndorsTrail/app/src/main/assets/anki_offline_dictionary_ATTRIBUTION.txt
