@@ -45,46 +45,43 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private boolean ankiQuizGateActive = false;
 	// A correct quiz answer gives exactly one attack, then hands the turn to the monsters.
 	private boolean quizAttackEndsTurn = false;
-	// Momentum: 0 = card/action, 1 = card/player turn, 2 = card/enemy.
-	// Three consecutive correct reviews advance one stage. A wrong attempt resets progress.
+	// Momentum stages: 0=card/action, 1=card/turn, 2=card/enemy.
+	// The authorization mode is captured BEFORE advancement, so earning Stage 2
+	// on a Stage 1 review still yields exactly one attack for that review.
 	private int ankiMomentumStage = 0;
 	private int ankiMomentumCorrectStreak = 0;
-	private boolean ankiTurnAuthorized = false;
-	private Monster ankiEnemyAuthorized = null;
-	private boolean ankiActionAuthorized = false;
+	private int ankiAuthorizedMode = -1;
+	private Monster ankiAuthorizedEnemy = null;
 
 	public int getAnkiMomentumStage() { return ankiMomentumStage; }
 	public int getAnkiMomentumCorrectStreak() { return ankiMomentumCorrectStreak; }
+
 	public boolean hasAnkiMomentumAttack() {
 		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return false;
-		if (ankiMomentumStage == 0) return ankiActionAuthorized;
-		if (ankiMomentumStage == 1) return ankiTurnAuthorized;
-		return world.model.uiSelections.selectedMonster != null
-				&& world.model.uiSelections.selectedMonster == ankiEnemyAuthorized;
+		if (ankiCombatSession.bypassForCurrentTurn) return true; // Anki unavailable: normal combat.
+		if (ankiAuthorizedMode == 0 || ankiAuthorizedMode == 1) return true;
+		return ankiAuthorizedMode == 2
+				&& world.model.uiSelections.selectedMonster != null
+				&& world.model.uiSelections.selectedMonster == ankiAuthorizedEnemy;
 	}
-	public void recordAnkiMomentumResult(boolean correct) {
-		if (!correct) {
-			ankiMomentumStage = 0;
-			ankiMomentumCorrectStreak = 0;
-			ankiTurnAuthorized = false;
-			ankiEnemyAuthorized = null;
-			ankiActionAuthorized = false;
-			return;
-		}
+
+	/** Record a completed Anki review. Good/Easy unlocks the current stage's
+	 * action, and every successful review increases Momentum by one. */
+	public void recordAnkiMomentumResult(boolean goodOrEasy) {
+		if (!goodOrEasy) return;
+		ankiAuthorizedMode = ankiMomentumStage;
+		ankiAuthorizedEnemy = world.model.uiSelections.selectedMonster;
 		if (ankiMomentumStage < 2 && ++ankiMomentumCorrectStreak >= 3) {
 			ankiMomentumStage++;
 			ankiMomentumCorrectStreak = 0;
 		}
-		ankiActionAuthorized = true;
-		ankiTurnAuthorized = true;
-		ankiEnemyAuthorized = world.model.uiSelections.selectedMonster;
 	}
+
 	public boolean ankiMomentumNeedsCard() { return !hasAnkiMomentumAttack(); }
 	private void resetAnkiMomentum() {
-		// Keep earned Momentum across encounters; only clear per-combat authorization.
-		ankiTurnAuthorized = false;
-		ankiEnemyAuthorized = null;
-		ankiActionAuthorized = false;
+		// Earned progress is retained across fights, but permission isn't.
+		ankiAuthorizedMode = -1;
+		ankiAuthorizedEnemy = null;
 	}
 
 
@@ -407,8 +404,14 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			setCombatSelection(target);
 		}
 
-		quizAttackEndsTurn = true;
-		executePlayerAttack();
+		if (ankiAuthorizedMode == 0) {
+			quizAttackEndsTurn = true;
+			executePlayerAttack();
+		} else {
+			// Stage 2/3 unlocks normal combat; no free automatic attack.
+			quizAttackEndsTurn = false;
+		}
+
 	}
 
 	private void executePlayerAttack() {
@@ -421,7 +424,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			quizAttackEndsTurn = false;
 			return;
 		}
-		if (ankiMomentumStage == 0) ankiActionAuthorized = false;
+		if (ankiAuthorizedMode == 0) ankiAuthorizedMode = -1;
 		final Monster target = world.model.uiSelections.selectedMonster;
 		final Coord attackPosition = world.model.uiSelections.selectedPosition;
 
@@ -445,36 +448,14 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		
 	}
 
-    private boolean momentumHealthAllowsAutoAttack() {
-        android.content.SharedPreferences prefs =
-                android.preference.PreferenceManager.getDefaultSharedPreferences(controllers.getContext());
-        int threshold = 30;
-        try { threshold = Integer.parseInt(prefs.getString("anki_momentum_pause_hp", "30")); }
-        catch (Exception ignored) {}
-        Player p = world.model.player;
-        return threshold <= 0 || p.getMaxHP() <= 0
-                || (long) p.getCurrentHP() * 100L > (long) p.getMaxHP() * threshold;
-    }
-
+    // Only Stage 1 auto-opens another review, after the attack animation.
+    // Stages 2/3 use normal player controls until their authorization expires.
     private void continueMomentumOrRequestCard() {
         if (!world.model.uiSelections.isInCombat
                 || !world.model.uiSelections.isPlayersCombatTurn
-                || !world.model.player.hasAPs(world.model.player.getAttackCost())) return;
-        if (canExitCombat()) return;
-        if (hasAnkiMomentumAttack() && momentumHealthAllowsAutoAttack()) {
-            new Handler().postDelayed(() -> {
-                if (world.model.uiSelections.isInCombat
-                        && world.model.uiSelections.isPlayersCombatTurn
-                        && !ankiQuizGateActive
-                        && hasAnkiMomentumAttack()
-                        && momentumHealthAllowsAutoAttack()
-                        && !controllers.effectController.isRunningVisualEffect()) {
-                    executePlayerAttack();
-                }
-            }, 220);
-        } else if (!hasAnkiMomentumAttack()) {
-            combatTurnListeners.onNewPlayerTurn();
-        }
+                || !world.model.player.hasAPs(world.model.player.getAttackCost())
+                || canExitCombat()) return;
+        if (ankiMomentumNeedsCard()) combatTurnListeners.onNewPlayerTurn();
     }
 
 	private void playerAttackCompleted() {
@@ -499,9 +480,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
         }
 
         playerActionCompleted();
-        if (ankiMomentumStage > 0
-                && world.model.uiSelections.isInCombat
-                && world.model.uiSelections.isPlayersCombatTurn) {
+        if (world.model.uiSelections.isInCombat && world.model.uiSelections.isPlayersCombatTurn) {
             continueMomentumOrRequestCard();
         }
 	}
@@ -800,8 +779,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		controllers.actorStatsController.setActorMaxAP(world.model.player);
 		if (!isFirstRound) controllers.gameRoundController.onNewPlayerRound();
 		world.model.uiSelections.isPlayersCombatTurn = true;
-		ankiTurnAuthorized = false;
-		ankiActionAuthorized = false;
+		if (ankiAuthorizedMode == 1 || ankiAuthorizedMode == 0) ankiAuthorizedMode = -1;
 		combatTurnListeners.onNewPlayerTurn();
 	}
 
