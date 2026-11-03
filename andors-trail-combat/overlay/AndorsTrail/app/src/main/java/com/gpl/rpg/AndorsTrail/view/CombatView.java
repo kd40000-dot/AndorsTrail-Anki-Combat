@@ -1054,6 +1054,9 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		ankiSession.resetAll();
 		// Prevent the watchdog from starting another request before combat authorizes it.
 		ankiSession.bypassForCurrentTurn = false;
+		// Close the completed review before handing controls back to combat.
+		// Especially important in stages 2/3, where no auto-attack follows.
+		syncAnkiUiFromSession(false);
 		if (shouldAttack && controllers.combatController.getAnkiAuthorizationMode() == 0) {
 			prefetchNextAnkiCard();
 		}
