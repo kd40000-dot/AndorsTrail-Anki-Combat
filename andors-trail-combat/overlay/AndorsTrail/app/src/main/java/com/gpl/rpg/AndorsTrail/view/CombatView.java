@@ -998,7 +998,10 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 			ankiSession.operationId++;
 			ankiSession.resetAttempt();
 			ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.IDLE);
-			controllers.combatController.recordAnkiMomentumResult(false);
+			// An Again retry is handled locally until the card is eventually answered.
+			// It must still reset Momentum immediately, even before Anki is updated.
+			controllers.combatController.resetAnkiMomentumForAgain();
+			refreshMomentumStageIndicator();
 			controllers.combatController.skipAnkiQuizTurn();
 			return;
 		}
@@ -1049,7 +1052,12 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		boolean shouldAttack = ankiSession.pendingShouldAttack;
 		int recordedEase = ankiSession.pendingEffectiveEase;
 		controllers.combatController.setLastAnkiRecordedEase(recordedEase);
-		controllers.combatController.recordAnkiMomentumResult(shouldAttack);
+		// Also handle Again ratings which are submitted directly (e.g. neutral cards).
+		if (ankiSession.pendingTappedEase == 1) {
+			controllers.combatController.resetAnkiMomentumForAgain();
+		} else {
+			controllers.combatController.recordAnkiMomentumResult(shouldAttack);
+		}
 		refreshMomentumStageIndicator();
 		ankiSession.resetAll();
 		// Prevent the watchdog from starting another request before combat authorizes it.
