@@ -55,6 +55,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 	public int getAnkiMomentumStage() { return ankiMomentumStage; }
 	public int getAnkiMomentumCorrectStreak() { return ankiMomentumCorrectStreak; }
+	public int getAnkiAuthorizationMode() { return ankiAuthorizedMode; }
 
 	public boolean hasAnkiMomentumAttack() {
 		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return false;
