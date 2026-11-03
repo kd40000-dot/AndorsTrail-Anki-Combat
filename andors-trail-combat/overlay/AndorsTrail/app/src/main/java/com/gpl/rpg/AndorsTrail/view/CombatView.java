@@ -178,7 +178,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		//Enable marquee if text is too long.
 		fleeButton.setSelected(true);
 		fleeButton.setOnClickListener((View v) -> {
-			c.startFlee();
+			beginFreeFlee();
 			// After fleeing, set the focus back to the main view so the player can choose a direction.
 			MainView mv = ((MainActivity) getContext()).getMainView();
 			mv.post(mv::requestFocus);
@@ -221,11 +221,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		configureRatingButtonColors();
 
 		ankiFlee.setOnClickListener((View v) -> {
-			hideAnkiKeyboardAndClearFocus();
-			ankiQuiz.setVisibility(View.GONE);
-			ankiFlee.setVisibility(View.GONE);
-			actionBar.setVisibility(View.VISIBLE);
-			controllers.combatController.startFlee();
+			beginFreeFlee();
 			MainView mv = ((MainActivity) getContext()).getMainView();
 			mv.post(mv::requestFocus);
 		});
@@ -526,6 +522,16 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		syncAnkiUiFromSession(false);
 	}
 
+	/** Flee takes precedence over every Anki state, including loading and retries. */
+	private void beginFreeFlee() {
+		clearAnkiPrefetch();
+		controllers.combatController.startFlee();
+		ankiQuiz.setVisibility(View.GONE);
+		ankiFlee.setVisibility(View.GONE);
+		hideAnkiKeyboardAndClearFocus();
+		actionBar.setVisibility(View.VISIBLE);
+	}
+
 	private void clearAnkiPrefetch() {
 		ankiPrefetchGeneration++;
 		ankiPrefetchRunning = false;
@@ -580,7 +586,8 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 
 	private void loadAnkiCardForPlayerTurn() {
-		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return;
+		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn
+				|| controllers.combatController.isFleeingWithoutAnki()) return;
 		if (ankiSession.bypassForCurrentTurn) {
 			controllers.combatController.setAnkiQuizGateActive(false);
 			ankiQuiz.setVisibility(View.GONE);
@@ -848,6 +855,14 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	private void syncAnkiUiFromSession(boolean allowLoad) {
 		refreshMomentumStageIndicator();
 		if (!isAttachedToWindow()) return;
+		if (controllers.combatController.isFleeingWithoutAnki()) {
+			controllers.combatController.setAnkiQuizGateActive(false);
+			ankiQuiz.setVisibility(View.GONE);
+			ankiFlee.setVisibility(View.GONE);
+			hideAnkiKeyboardAndClearFocus();
+			if (world.model.uiSelections.isPlayersCombatTurn) actionBar.setVisibility(View.VISIBLE);
+			return;
+		}
 
 		if (!world.model.uiSelections.isInCombat) {
 			ankiWordTranslator.reset(ankiQuestion, ankiWordTranslation);
@@ -1159,7 +1174,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 
 	private void runAnkiHealthCheck() {
-		if (!isAttachedToWindow()) return;
+		if (!isAttachedToWindow() || controllers.combatController.isFleeingWithoutAnki()) return;
 
 		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) {
 			return;
@@ -1372,6 +1387,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	@Override
 	public void onMonsterSelected(Monster m, Coord selectedPosition, Coord previousSelection) {
 		updateSelectedMonster(m);
+		if (controllers.combatController.isFleeingWithoutAnki()) return;
 		if (m != null && world.model.uiSelections.isPlayersCombatTurn
 				&& ankiSession.phase == CombatController.AnkiCombatSession.Phase.IDLE
 				&& !ankiSession.bypassForCurrentTurn
@@ -1430,8 +1446,16 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 	@Override
 	public void onNewPlayerTurn() {
-		ankiSession.bypassForCurrentTurn = false;
+		ankiSession.bypassForCurrentTurn = controllers.combatController.isFleeingWithoutAnki();
 		updateTurnInfo(null);
+		if (controllers.combatController.isFleeingWithoutAnki()) {
+			controllers.combatController.setAnkiQuizGateActive(false);
+			ankiQuiz.setVisibility(View.GONE);
+			ankiFlee.setVisibility(View.GONE);
+			hideAnkiKeyboardAndClearFocus();
+			actionBar.setVisibility(View.VISIBLE);
+			return;
+		}
         // Pausing only prevents automatic card/attack chaining. The player
         // keeps their remaining AP and may manually attack, heal or flee.
         if (momentumPausedForHealth()) {
