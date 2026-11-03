@@ -94,6 +94,14 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	private final Handler ankiMainHandler = new Handler(Looper.getMainLooper());
 	private boolean suppressAnkiTextWatcher = false;
 	private long lastSubmissionProbeOperation = -1L;
+	// Fetch the next Stage 1 card while the current attack animation plays.
+	private int ankiPrefetchGeneration = 0;
+	private boolean ankiPrefetchRunning = false;
+	private boolean ankiPrefetchReady = false;
+	private boolean ankiWaitingForPrefetch = false;
+	private AnkiCombatReviewClient.ReviewCard ankiPrefetchedCard = null;
+	private Exception ankiPrefetchError = null;
+
 
 	private final Runnable ankiHealthCheck = new Runnable() {
 		@Override
@@ -518,6 +526,59 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		syncAnkiUiFromSession(false);
 	}
 
+	private void clearAnkiPrefetch() {
+		ankiPrefetchGeneration++;
+		ankiPrefetchRunning = false;
+		ankiPrefetchReady = false;
+		ankiWaitingForPrefetch = false;
+		ankiPrefetchedCard = null;
+		ankiPrefetchError = null;
+	}
+
+	private void consumeAnkiPrefetch() {
+		ankiWaitingForPrefetch = false;
+		if (!ankiPrefetchReady) return;
+		AnkiCombatReviewClient.ReviewCard loaded = ankiPrefetchedCard;
+		Exception error = ankiPrefetchError;
+		ankiPrefetchReady = false;
+		ankiPrefetchedCard = null;
+		ankiPrefetchError = null;
+		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return;
+		if (error != null) {
+			fallbackToNormalCombat("Could not load Anki card: " + error.getMessage());
+		} else if (loaded == null) {
+			fallbackToNormalCombat(null);
+		} else {
+			beginAnkiQuestion(loaded);
+		}
+	}
+
+	private void prefetchNextAnkiCard() {
+		if (ankiPrefetchRunning || ankiPrefetchReady) return;
+		final int generation = ++ankiPrefetchGeneration;
+		ankiPrefetchRunning = true;
+		final android.content.ContentResolver resolver =
+				getContext().getApplicationContext().getContentResolver();
+		new Thread(() -> {
+			AnkiCombatReviewClient.ReviewCard loaded = null;
+			Exception error = null;
+			try { loaded = ankiClient.getNextCard(resolver); }
+			catch (Exception e) { error = e; }
+			final AnkiCombatReviewClient.ReviewCard ready = loaded;
+			final Exception failure = error;
+			ankiMainHandler.post(() -> {
+				if (generation != ankiPrefetchGeneration) return;
+				ankiPrefetchRunning = false;
+				ankiPrefetchReady = true;
+				ankiPrefetchedCard = ready;
+				ankiPrefetchError = failure;
+				if (ankiWaitingForPrefetch
+						&& ankiSession.phase == CombatController.AnkiCombatSession.Phase.LOADING)
+					consumeAnkiPrefetch();
+			});
+		}, "AnkiMomentumPrefetch").start();
+	}
+
 	private void loadAnkiCardForPlayerTurn() {
 		if (!world.model.uiSelections.isInCombat || !world.model.uiSelections.isPlayersCombatTurn) return;
 		if (ankiSession.bypassForCurrentTurn) {
@@ -534,6 +595,18 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		}
 
 		if (ankiSession.phase != CombatController.AnkiCombatSession.Phase.IDLE) {
+			controllers.combatController.setAnkiQuizGateActive(true);
+			syncAnkiUiFromSession(false);
+			return;
+		}
+
+		if (ankiPrefetchReady) {
+			consumeAnkiPrefetch();
+			return;
+		}
+		if (ankiPrefetchRunning) {
+			ankiWaitingForPrefetch = true;
+			ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.LOADING);
 			controllers.combatController.setAnkiQuizGateActive(true);
 			syncAnkiUiFromSession(false);
 			return;
@@ -977,9 +1050,11 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		controllers.combatController.recordAnkiMomentumResult(shouldAttack);
 		refreshMomentumStageIndicator();
 		ankiSession.resetAll();
-		// Prevent the watchdog from loading another card in the small window before
-		// the attack/skip-turn transition completes.
+		// Prevent the watchdog from starting another request before combat authorizes it.
 		ankiSession.bypassForCurrentTurn = !shouldAttack;
+		if (shouldAttack && controllers.combatController.getAnkiAuthorizationMode() == 0) {
+			prefetchNextAnkiCard();
+		}
 
 		if (!world.model.uiSelections.isInCombat) return;
 		if (shouldAttack) {
@@ -1054,6 +1129,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		}
 
 		if (ankiSession.phase == CombatController.AnkiCombatSession.Phase.LOADING) {
+			clearAnkiPrefetch();
 			ankiSession.operationId++;
 			ankiSession.errorMessage = "";
 			ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.IDLE);
@@ -1084,6 +1160,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 		if (ankiSession.phase == CombatController.AnkiCombatSession.Phase.LOADING && age > 12000) {
 			// Card loading is read-only, so invalidating and retrying it is safe.
+			clearAnkiPrefetch();
 			ankiSession.operationId++;
 			ankiSession.errorMessage = "Card loading stalled; retrying…";
 			ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.IDLE);
@@ -1312,6 +1389,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 	@Override
 	public void onCombatEnded() {
+		clearAnkiPrefetch();
 		ankiQuiz.setVisibility(View.GONE);
 		ankiFlee.setVisibility(View.GONE);
 		hideAnkiKeyboardAndClearFocus();
