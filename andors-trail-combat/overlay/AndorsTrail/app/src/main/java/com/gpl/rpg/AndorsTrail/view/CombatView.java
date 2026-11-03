@@ -1057,7 +1057,8 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		// Close the completed review before handing controls back to combat.
 		// Especially important in stages 2/3, where no auto-attack follows.
 		syncAnkiUiFromSession(false);
-		if (shouldAttack && controllers.combatController.getAnkiAuthorizationMode() == 0) {
+		if (shouldAttack) {
+			// Warm the next review in any stage; use it only when the next review is required.
 			prefetchNextAnkiCard();
 		}
 
