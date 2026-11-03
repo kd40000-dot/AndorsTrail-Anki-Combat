@@ -68,6 +68,12 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 	/** Record a completed Anki review. Good/Easy unlocks the current stage's
 	 * action, and every successful review increases Momentum by one. */
+	public void resetAnkiMomentumForAgain() {
+		ankiMomentumStage = 0;
+		ankiMomentumCorrectStreak = 0;
+		ankiAuthorizedMode = -1;
+		ankiAuthorizedEnemy = null;
+	}
 	public void recordAnkiMomentumResult(boolean goodOrEasy) {
 		if (!goodOrEasy) return;
 		ankiAuthorizedMode = ankiMomentumStage;
