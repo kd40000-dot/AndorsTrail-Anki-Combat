@@ -889,12 +889,15 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 				!ankiSession.neutralFirstExposure
 						&& ankiClient.isCorrect(ankiSession.typedText, ankiSession.card.answer);
 		ankiSession.errorMessage = "";
-		ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.ANSWER);
-		syncAnkiUiFromSession(false);
-
-		// Pronunciation feedback only after the attempt is locked in. Never play
-		// audio while the English question is still being answered.
+		// Queue pronunciation before advancing. A new card must not interrupt it.
 		playSubmittedAnswerAudio(ankiSession.card, ankiSession.typedText);
+		ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.ANSWER);
+		if (ankiSession.typedCorrect) {
+			// A correct typed answer is always Good: no extra rating screen/tap.
+			chooseAnkiRating(3);
+		} else {
+			syncAnkiUiFromSession(false);
+		}
 	}
 
 	private void setRatingButtonsEnabled(boolean enabled) {
@@ -929,7 +932,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		final long operation = ++ankiSession.operationId;
 		ankiSession.pendingTappedEase = tappedEase;
 		ankiSession.pendingEffectiveEase = effectiveEase;
-		ankiSession.pendingShouldAttack = wasCorrect;
+		ankiSession.pendingShouldAttack = tappedEase >= 3;
 		ankiSession.errorMessage = "";
 		ankiSession.setPhase(CombatController.AnkiCombatSession.Phase.SUBMITTING);
 		lastSubmissionProbeOperation = -1L;
@@ -976,7 +979,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		ankiSession.resetAll();
 		// Prevent the watchdog from loading another card in the small window before
 		// the attack/skip-turn transition completes.
-		ankiSession.bypassForCurrentTurn = true;
+		ankiSession.bypassForCurrentTurn = !shouldAttack;
 
 		if (!world.model.uiSelections.isInCombat) return;
 		if (shouldAttack) {
@@ -1275,6 +1278,19 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	@Override
 	public void onMonsterSelected(Monster m, Coord selectedPosition, Coord previousSelection) {
 		updateSelectedMonster(m);
+		if (m != null && world.model.uiSelections.isPlayersCombatTurn
+				&& ankiSession.phase == CombatController.AnkiCombatSession.Phase.IDLE
+				&& !ankiSession.bypassForCurrentTurn
+				&& controllers.combatController.getAnkiMomentumStage() == 2
+				&& controllers.combatController.ankiMomentumNeedsCard()) {
+			ankiMainHandler.post(() -> {
+				if (isAttachedToWindow()
+						&& world.model.uiSelections.isPlayersCombatTurn
+						&& ankiSession.phase == CombatController.AnkiCombatSession.Phase.IDLE
+						&& controllers.combatController.ankiMomentumNeedsCard()
+						&& !momentumPausedForHealth()) loadAnkiCardForPlayerTurn();
+			});
+		}
 	}
 
 	@Override
