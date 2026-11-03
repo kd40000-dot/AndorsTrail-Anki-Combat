@@ -71,6 +71,13 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		if (!goodOrEasy) return;
 		ankiAuthorizedMode = ankiMomentumStage;
 		ankiAuthorizedEnemy = world.model.uiSelections.selectedMonster;
+		if (ankiAuthorizedEnemy == null) {
+			Monster firstTarget = getAdjacentAggressiveMonster();
+			if (firstTarget != null) {
+				setCombatSelection(firstTarget);
+				ankiAuthorizedEnemy = firstTarget;
+			}
+		}
 		if (ankiMomentumStage < 2 && ++ankiMomentumCorrectStreak >= 3) {
 			ankiMomentumStage++;
 			ankiMomentumCorrectStreak = 0;
