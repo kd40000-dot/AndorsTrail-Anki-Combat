@@ -43,8 +43,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 	// While the Anki combat question is unresolved, block normal player combat actions.
 	private boolean ankiQuizGateActive = false;
-	// Explicit flee mode must outlive quiz reset, callbacks and monster turns.
-	// It is never blocked by the Anki gate and never spends player AP.
+	// Flee mode temporarily bypasses Anki while the player chooses an escape route.
+	// The attempt itself follows the base game's AP cost, roll and turn rules.
 	private boolean fleeingWithoutAnki = false;
 	public boolean isFleeingWithoutAnki() { return fleeingWithoutAnki; }
 	// A correct quiz answer gives exactly one attack, then hands the turn to the monsters.
@@ -588,8 +588,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private void executeCombatMove(final Coord dest) {
 		if (world.model.uiSelections.selectedMonster != null) return;
 		if (dest == null) return;
-		// Flee movement is always free, even at zero AP.
-		if (!fleeingWithoutAnki && !useAPs(world.model.player.getMoveCost())) return;
+		// Escaping bypasses Anki, NOT the base game's movement AP cost.
+		if (!useAPs(world.model.player.getMoveCost())) return;
 
 		int fleeChanceBias = world.model.player.getSkillLevel(SkillCollection.SkillID.evasion) * SkillCollection.PER_SKILLPOINT_INCREASE_EVASION_FLEE_CHANCE_PERCENTAGE;
 		if (Constants.roll100(Constants.FLEE_FAIL_CHANCE_PERCENT - fleeChanceBias)) {
@@ -604,11 +604,13 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 		world.model.player.nextPosition.set(dest);
 		controllers.movementController.moveToNextIfPossible();
-
+		// The flee attempt is resolved; resume normal combat/Anki gating if combat remains.
+		fleeingWithoutAnki = false;
 		playerActionCompleted();
 	}
 
 	private void fleeingFailed() {
+		fleeingWithoutAnki = false;
 		combatActionListeners.onPlayerFailedFleeing();
 		endPlayerTurn();
 	}
