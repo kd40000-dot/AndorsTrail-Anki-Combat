@@ -870,7 +870,9 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 				ankiFlee.setVisibility(View.GONE);
 				hideAnkiKeyboardAndClearFocus();
 				actionBar.setVisibility(View.VISIBLE);
-				if (allowLoad && !ankiSession.bypassForCurrentTurn) loadAnkiCardForPlayerTurn();
+				if (allowLoad && !ankiSession.bypassForCurrentTurn
+						&& controllers.combatController.ankiMomentumNeedsCard()
+						&& !momentumPausedForHealth()) loadAnkiCardForPlayerTurn();
 				break;
 			case LOADING:
 				renderLoadingState();
@@ -1051,7 +1053,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		refreshMomentumStageIndicator();
 		ankiSession.resetAll();
 		// Prevent the watchdog from starting another request before combat authorizes it.
-		ankiSession.bypassForCurrentTurn = !shouldAttack;
+		ankiSession.bypassForCurrentTurn = false;
 		if (shouldAttack && controllers.combatController.getAnkiAuthorizationMode() == 0) {
 			prefetchNextAnkiCard();
 		}
@@ -1154,7 +1156,10 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		long age = System.currentTimeMillis() - ankiSession.phaseStartedAt;
 
 		if (ankiSession.phase == CombatController.AnkiCombatSession.Phase.IDLE) {
-			if (!ankiSession.bypassForCurrentTurn) loadAnkiCardForPlayerTurn();
+			if (!ankiSession.bypassForCurrentTurn
+					&& controllers.combatController.ankiMomentumNeedsCard()
+					&& !controllers.effectController.isRunningVisualEffect()
+					&& !momentumPausedForHealth()) loadAnkiCardForPlayerTurn();
 			return;
 		}
 
