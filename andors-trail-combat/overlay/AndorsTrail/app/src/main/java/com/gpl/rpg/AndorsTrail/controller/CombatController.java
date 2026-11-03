@@ -43,6 +43,10 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 	// While the Anki combat question is unresolved, block normal player combat actions.
 	private boolean ankiQuizGateActive = false;
+	// Explicit flee mode must outlive quiz reset, callbacks and monster turns.
+	// It is never blocked by the Anki gate and never spends player AP.
+	private boolean fleeingWithoutAnki = false;
+	public boolean isFleeingWithoutAnki() { return fleeingWithoutAnki; }
 	// A correct quiz answer gives exactly one attack, then hands the turn to the monsters.
 	private boolean quizAttackEndsTurn = false;
 	// Momentum stages: 0=card/action, 1=card/turn, 2=card/enemy.
@@ -195,6 +199,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		resetCombatState();
 
 		if (whoseTurn != BeginTurnAs.continueLastTurn) {
+			fleeingWithoutAnki = false;
 			resetAnkiMomentum();
 			ankiQuizGateActive = false;
 			ankiCombatSession.resetAll();
@@ -213,6 +218,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		exitCombat(pickupLootBags, false);
 	}
 	public void exitCombat(boolean pickupLootBags, boolean canceledCombat) {
+		fleeingWithoutAnki = false;
 		ankiQuizGateActive = false;
 		quizAttackEndsTurn = false;
 		resetAnkiMomentum();
@@ -324,8 +330,18 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	public void executeMoveAttack(int dx, int dy) {
-		if (ankiQuizGateActive) return;
 		if (!world.model.uiSelections.isPlayersCombatTurn) return;
+		// Fleeing has priority over quiz gating and target selection.
+		if (fleeingWithoutAnki) {
+			if (world.model.uiSelections.selectedPosition != null
+					&& world.model.uiSelections.selectedMonster == null) {
+				executeCombatMove(world.model.uiSelections.selectedPosition);
+			} else if (dx != 0 || dy != 0) {
+				executeFlee(dx, dy);
+			}
+			return;
+		}
+		if (ankiQuizGateActive) return;
 
 		if (world.model.uiSelections.selectedMonster != null) {
 			executePlayerAttack();
@@ -572,7 +588,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private void executeCombatMove(final Coord dest) {
 		if (world.model.uiSelections.selectedMonster != null) return;
 		if (dest == null) return;
-		if (!useAPs(world.model.player.getMoveCost())) return;
+		// Flee movement is always free, even at zero AP.
+		if (!fleeingWithoutAnki && !useAPs(world.model.player.getMoveCost())) return;
 
 		int fleeChanceBias = world.model.player.getSkillLevel(SkillCollection.SkillID.evasion) * SkillCollection.PER_SKILLPOINT_INCREASE_EVASION_FLEE_CHANCE_PERCENTAGE;
 		if (Constants.roll100(Constants.FLEE_FAIL_CHANCE_PERCENT - fleeChanceBias)) {
@@ -946,14 +963,13 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	public void startFlee() {
-		if (ankiQuizGateActive) {
-			// Fleeing is an explicit escape from the unresolved quiz. Do not submit
-			// any Anki review; just discard the in-combat attempt and unlock combat.
-			ankiCombatSession.resetAll();
-			ankiCombatSession.bypassForCurrentTurn = true;
-			ankiQuizGateActive = false;
-			quizAttackEndsTurn = false;
-		}
+		// Always cancel an unresolved quiz (including a card currently loading),
+		// without grading it, spending AP, or starting another card.
+		fleeingWithoutAnki = true;
+		ankiCombatSession.resetAll();
+		ankiCombatSession.bypassForCurrentTurn = true;
+		ankiQuizGateActive = false;
+		quizAttackEndsTurn = false;
 		setCombatSelection(null, null);
 		combatActionListeners.onPlayerStartedFleeing();
 	}
