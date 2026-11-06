@@ -87,8 +87,10 @@ jobs:
           assert len(vi.splitlines()) > 30000, "Vietnamese dictionary incomplete"
           assert "độc lập\t" in vi, "compound missing"
           assert "linh hoạt\tflexible; adaptable; versatile" in vi, "linh hoạt translation missing"
+          assert "thư ký\tsecretary; administrative assistant" in vi, "thư ký translation missing"
           compounds = (p / "anki_vietnamese_compounds.txt").read_text(encoding="utf-8")
           assert "\nlinh hoạt\n" in "\n" + compounds, "linh hoạt segmentation missing"
+          assert "\nthư ký\n" in "\n" + compounds, "thư ký segmentation missing"
           assert "polite\tlịch sự" in en, "English test word missing"
           print("Offline bilingual lookup assets validated")
           PY
