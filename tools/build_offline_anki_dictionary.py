@@ -67,6 +67,18 @@ def main(outdir):
     # game, even when a dictionary's headword conventions vary.
     common = {
         "độc lập": "independent; autonomous; self-reliant",
+        # Supplements for common lexical compounds missing from some VNEDICT
+        # and VNTK releases. Prefer complete compounds over syllable glosses.
+        "linh hoạt": "flexible; adaptable; versatile",
+        "hoạt": "active; functioning; operating (usually in compounds)",
+        "linh": "spirit; soul; effective (meaning depends on compound)",
+        "sự nghiệp": "career; professional life; enterprise",
+        "nghề nghiệp": "occupation; profession; career",
+        "hoạt động": "activity; operation; to function",
+        "cố gắng": "to try; make an effort",
+        "đánh giá": "to evaluate; assess; appraise",
+        "thành công": "success; successful",
+        "tiến bộ": "progress; improvement",
         "muốn": "want; wish; desire",
         "lịch sự": "polite; courteous; well-mannered",
         "bạn": "you; friend",
@@ -93,6 +105,30 @@ def main(outdir):
         raise ValueError("Missing core Vietnamese headwords: " + str(REQUIRED - dictionary.keys()))
     if len(dictionary) < 30000:
         raise ValueError("Dictionary appears too small: %d headwords" % len(dictionary))
+
+    # Complete the prebundled VNTK syllable segmentation lexicon with
+    # actual dictionary phrases. Without this, a valid headword such as
+    # "linh hoạt" can be split into "linh" + "hoạt" and give no translation.
+    # Preserve the VNTK license/header and original entries.
+    compounds_file = folder / "anki_vietnamese_compounds.txt"
+    existing_compounds = set()
+    if compounds_file.exists():
+        existing_compounds = {
+            line.strip().lower() for line in
+            compounds_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        }
+    # A curated set is also included even if the source StarDict index varies.
+    extra_compounds = {
+        word for word in dictionary
+        if 2 <= len(word.split()) <= 4
+        and re.fullmatch(r"[\w\u00c0-\u1ef9đĐ]+(?:[ \t]+[\w\u00c0-\u1ef9đĐ]+){1,3}", word)
+    } - existing_compounds
+    with compounds_file.open("a", encoding="utf-8") as dst:
+        for word in sorted(extra_compounds):
+            dst.write(word + "\n")
+    print("Added segmentation compounds:", len(extra_compounds), flush=True)
+    assert "linh hoạt" in existing_compounds | extra_compounds
 
     vi_file = folder / "anki_vi_en_dictionary.tsv"
     vi_file.write_text(
