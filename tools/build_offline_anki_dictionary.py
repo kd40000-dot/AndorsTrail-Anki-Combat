@@ -70,6 +70,7 @@ def main(outdir):
         # Supplements for common lexical compounds missing from some VNEDICT
         # and VNTK releases. Prefer complete compounds over syllable glosses.
         "linh hoạt": "flexible; adaptable; versatile",
+        "thư ký": "secretary; administrative assistant",
         "hoạt": "active; functioning; operating (usually in compounds)",
         "linh": "spirit; soul; effective (meaning depends on compound)",
         "sự nghiệp": "career; professional life; enterprise",
