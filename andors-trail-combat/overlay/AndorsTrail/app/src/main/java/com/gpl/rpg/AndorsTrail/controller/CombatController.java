@@ -195,11 +195,13 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	public void enterCombat(BeginTurnAs whoseTurn) {
+		final boolean wasAlreadyInCombat = world.model.uiSelections.isInCombat;
 		world.model.uiSelections.isInCombat = true;
 		resetCombatState();
 
 		if (whoseTurn != BeginTurnAs.continueLastTurn) {
-			fleeingWithoutAnki = false;
+			// Monster re-engagement during an escape must not cancel flee intent.
+			if (!wasAlreadyInCombat) fleeingWithoutAnki = false;
 			resetAnkiMomentum();
 			ankiQuizGateActive = false;
 			ankiCombatSession.resetAll();
@@ -604,13 +606,14 @@ public final class CombatController implements VisualEffectCompletedCallback {
 
 		world.model.player.nextPosition.set(dest);
 		controllers.movementController.moveToNextIfPossible();
-		// The flee attempt is resolved; resume normal combat/Anki gating if combat remains.
-		fleeingWithoutAnki = false;
+		// If this move does not escape combat, keep fleeing available next turn.
+		// exitCombat() is responsible for clearing the flee intent.
 		playerActionCompleted();
 	}
 
 	private void fleeingFailed() {
-		fleeingWithoutAnki = false;
+		// A failed escape ends the player turn as in the base game, but trying
+		// another escape on the next turn must not require an Anki review.
 		combatActionListeners.onPlayerFailedFleeing();
 		endPlayerTurn();
 	}
