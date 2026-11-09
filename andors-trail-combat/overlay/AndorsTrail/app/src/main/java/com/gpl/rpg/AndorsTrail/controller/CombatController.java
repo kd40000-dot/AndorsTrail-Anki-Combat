@@ -75,18 +75,28 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		autoAttackHandler.postDelayed(autoAttackStep, 160);
 	}
 	private void runAutoAttackStep() {
-		if (!autoAttackEnabled
-				|| !world.model.uiSelections.isInCombat
-				|| !world.model.uiSelections.isPlayersCombatTurn
-				|| fleeingWithoutAnki
-				|| ankiQuizGateActive
-				|| controllers.effectController.isRunningVisualEffect()
-				|| ankiAuthorizedMode < 1
-				|| !hasAnkiMomentumAttack()
-				|| !world.model.player.hasAPs(world.model.player.getAttackCost())
-				|| !isAutoAttackHealthSafe()) return;
-		// Stage 3 is bound to one reviewed enemy. Switching targets must
-		// request another card, and must never automatically attack it.
+		// Auto-attack is player intent, not a substitute for Anki authorization.
+		if (!autoAttackEnabled || !world.model.uiSelections.isInCombat
+				|| fleeingWithoutAnki || !world.model.uiSelections.isPlayersCombatTurn) return;
+		// Visual effects are transient. Retry rather than silently losing the
+		// one-shot callback that drives the whole attack chain.
+		if (controllers.effectController.isRunningVisualEffect()) {
+			scheduleAutoAttack();
+			return;
+		}
+		// Pause on any unanswered card, including a card currently loading.
+		if (ankiQuizGateActive || ankiCombatSession.phase != AnkiCombatSession.Phase.IDLE
+				|| !hasAnkiMomentumAttack() || ankiAuthorizedMode < 1) return;
+		if (!isAutoAttackHealthSafe()) return;
+		// An authorized turn may contain fewer remaining AP than an attack costs.
+		// End the turn as the player would manually so monsters can act and a
+		// fresh Anki card can appear on the next player turn.
+		if (!world.model.player.hasAPs(world.model.player.getAttackCost())) {
+			endPlayerTurn();
+			return;
+		}
+		// Stage 3 authorization belongs only to the reviewed enemy; a new
+		// target is never attacked until its own review is completed.
 		if (world.model.uiSelections.selectedMonster == null) return;
 		executePlayerAttack();
 	}
@@ -358,6 +368,9 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		if (selectedMonster != null) combatSelectionListeners.onMonsterSelected(selectedMonster, selectedPosition, previousSelection);
 		else if (selectedPosition != null) combatSelectionListeners.onMovementDestinationSelected(selectedPosition, previousSelection);
 		else if (previousSelection != null) combatSelectionListeners.onCombatSelectionCleared(previousSelection);
+		// A selected, already-authorized enemy should start attacking even if
+		// the toggle was enabled before that enemy was selected.
+		if (selectedMonster != null && autoAttackEnabled) scheduleAutoAttack();
 	}
 
 	public void setCombatSelection(Coord p) {
