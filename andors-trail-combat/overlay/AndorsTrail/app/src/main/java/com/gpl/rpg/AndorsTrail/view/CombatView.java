@@ -62,6 +62,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	private final Button endTurnButton;
 	private final Button fleeButton;
 	private final ImageButton monsterInfo;
+	private final Button autoAttackButton;
 	private final RangeBar monsterHealth;
 	private final ImageButton monsterConditionsButton;
 	private final RelativeLayout activeConditionsBar;
@@ -187,6 +188,12 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		playerAPBar = (RangeBar) findViewById(R.id.combatview_status);
 		playerAPBar.init(R.drawable.ui_progress_ap, R.string.status_ap);
 
+		autoAttackButton = findViewById(R.id.combatview_autoattack);
+		autoAttackButton.setOnClickListener(v -> {
+			c.setAutoAttackEnabled(!c.isAutoAttackEnabled());
+			refreshAutoAttackButton();
+		});
+		refreshAutoAttackButton();
 		monsterInfo = (ImageButton) findViewById(R.id.combatview_monsterinfo);
 		monsterInfo.setOnClickListener(new OnClickListener() {
 			@Override
@@ -531,6 +538,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	private void beginFreeFlee() {
 		clearAnkiPrefetch();
 		controllers.combatController.startFlee();
+		refreshAutoAttackButton();
 		ankiQuiz.setVisibility(View.GONE);
 		ankiFlee.setVisibility(View.GONE);
 		hideAnkiKeyboardAndClearFocus();
@@ -1257,6 +1265,13 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		playerAPBar.update(player.getMaxAP(), player.getCurrentAP());
 		updateAttackMoveButtonText();
 	}
+	private void refreshAutoAttackButton() {
+		boolean enabled = controllers.combatController.isAutoAttackEnabled();
+		autoAttackButton.setText(enabled ? "Auto\nON" : "Auto\nOFF");
+		autoAttackButton.setSelected(enabled);
+		autoAttackButton.setContentDescription(enabled ? "Auto attack on, tap to disable" : "Auto attack off, tap to enable");
+	}
+
 	private void updateSelectedMonster(Monster selectedMonster) {
 		if (currentMonster != null && currentMonster == selectedMonster) return;
 
@@ -1347,6 +1362,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 	}
 
 	public void updateStatus() {
+		refreshAutoAttackButton();
 		updatePlayerAP();
 		updateSelectedMonster(world.model.uiSelections.selectedMonster);
 		syncAnkiUiFromSession(false);
@@ -1420,6 +1436,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 	@Override
 	public void onCombatStarted() {
+		refreshAutoAttackButton();
 		show();
 		updateTurnInfo(null);
 		syncAnkiUiFromSession(true);
@@ -1427,6 +1444,7 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 
 	@Override
 	public void onCombatEnded() {
+		refreshAutoAttackButton();
 		clearAnkiPrefetch();
 		ankiQuiz.setVisibility(View.GONE);
 		ankiFlee.setVisibility(View.GONE);
