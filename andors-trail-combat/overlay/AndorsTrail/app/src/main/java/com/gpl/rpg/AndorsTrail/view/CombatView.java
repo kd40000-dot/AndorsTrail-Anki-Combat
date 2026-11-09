@@ -216,6 +216,11 @@ public final class CombatView extends RelativeLayout implements CombatSelectionL
 		ankiGood = (Button) findViewById(R.id.combatview_anki_good);
 		ankiEasy = (Button) findViewById(R.id.combatview_anki_easy);
 		ankiFlee = (Button) findViewById(R.id.combatview_anki_flee);
+		findViewById(R.id.combatview_anki_quiz_flee).setOnClickListener((View v) -> {
+			beginFreeFlee();
+			MainView mv = ((MainActivity) getContext()).getMainView();
+			mv.post(mv::requestFocus);
+		});
 		ankiRecover = (Button) findViewById(R.id.combatview_anki_recover);
 
 		configureRatingButtonColors();
