@@ -111,6 +111,22 @@
                 android:scaleType="fitCenter" />
 
             <Button
+                android:id="@+id/combatview_autoattack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toRightOf="@id/combatview_monsterinfo"
+                android:layout_centerVertical="true"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingLeft="6dp"
+                android:paddingRight="6dp"
+                android:text="Auto\nOFF"
+                android:textAllCaps="false"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                android:contentDescription="Toggle automatic attacks" />
+
+            <Button
                 android:id="@+id/combatview_anki_flee"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -141,7 +157,7 @@
                 android:layout_height="wrap_content"
                 android:layout_centerVertical="true"
                 android:layout_toLeftOf="@id/combatview_monsterconditions_button"
-                android:layout_toRightOf="@id/combatview_monsterinfo" />
+                android:layout_toRightOf="@id/combatview_autoattack" />
         </RelativeLayout>
     </RelativeLayout>
 
