@@ -64,6 +64,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	public boolean isAutoAttackEnabled() { return autoAttackEnabled; }
 	public void setAutoAttackEnabled(boolean enabled) {
 		autoAttackEnabled = enabled;
+		android.preference.PreferenceManager.getDefaultSharedPreferences(controllers.getContext())
+				.edit().putBoolean("anki_auto_attack_enabled", enabled).apply();
 		autoAttackHandler.removeCallbacks(autoAttackStep);
 		if (enabled) scheduleAutoAttack();
 	}
@@ -221,6 +223,10 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	public CombatController(ControllerContext controllers, WorldContext world) {
 		this.controllers = controllers;
 		this.world = world;
+		// Explicit player preference: survives combat, escape, and app restarts.
+		this.autoAttackEnabled = android.preference.PreferenceManager
+				.getDefaultSharedPreferences(controllers.getContext())
+				.getBoolean("anki_auto_attack_enabled", false);
 	}
 
 	public static enum BeginTurnAs {
@@ -244,7 +250,6 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		resetCombatState();
 
 		if (whoseTurn != BeginTurnAs.continueLastTurn) {
-			if (!wasAlreadyInCombat) setAutoAttackEnabled(false);
 			// Monster re-engagement during an escape must not cancel flee intent.
 			if (!wasAlreadyInCombat) fleeingWithoutAnki = false;
 			resetAnkiMomentum();
@@ -265,7 +270,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		exitCombat(pickupLootBags, false);
 	}
 	public void exitCombat(boolean pickupLootBags, boolean canceledCombat) {
-		setAutoAttackEnabled(false);
+		// Stop queued attacks for this encounter, not the saved toggle.
+		autoAttackHandler.removeCallbacks(autoAttackStep);
 		fleeingWithoutAnki = false;
 		ankiQuizGateActive = false;
 		quizAttackEndsTurn = false;
@@ -1017,7 +1023,8 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	public void startFlee() {
-		setAutoAttackEnabled(false);
+		// Flee pauses auto attacks without disabling the user's preference.
+		autoAttackHandler.removeCallbacks(autoAttackStep);
 		// Always cancel an unresolved quiz (including a card currently loading),
 		// without grading it, spending AP, or starting another card.
 		fleeingWithoutAnki = true;
