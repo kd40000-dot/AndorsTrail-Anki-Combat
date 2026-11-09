@@ -171,16 +171,36 @@
         android:padding="8dp"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/combatview_anki_momentum_stage"
+        <!-- Always offer flee within the quiz panel, even when no monster is selected. -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:paddingBottom="3dp"
-            android:text="Momentum 1 · Action"
-            android:textStyle="bold"
-            android:textColor="?attr/ui_theme_dialogue_light_color"
-            android:textSize="13sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/combatview_anki_momentum_stage"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:paddingBottom="3dp"
+                android:text="Momentum 1 · Action"
+                android:textStyle="bold"
+                android:textColor="?attr/ui_theme_dialogue_light_color"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/combatview_anki_quiz_flee"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="0dp"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:text="@string/combat_flee"
+                android:textAllCaps="false"
+                android:textSize="@dimen/actionbar_text" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/combatview_anki_status"
