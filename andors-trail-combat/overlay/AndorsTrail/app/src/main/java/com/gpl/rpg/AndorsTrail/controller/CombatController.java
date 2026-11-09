@@ -56,6 +56,50 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	private int ankiMomentumCorrectStreak = 0;
 	private int ankiAuthorizedMode = -1;
 	private Monster ankiAuthorizedEnemy = null;
+	// Opt-in auto attack is a normal combat action, never an Anki bypass.
+	private boolean autoAttackEnabled = false;
+	private final Handler autoAttackHandler = new Handler();
+	private final Runnable autoAttackStep = this::runAutoAttackStep;
+
+	public boolean isAutoAttackEnabled() { return autoAttackEnabled; }
+	public void setAutoAttackEnabled(boolean enabled) {
+		autoAttackEnabled = enabled;
+		autoAttackHandler.removeCallbacks(autoAttackStep);
+		if (enabled) scheduleAutoAttack();
+	}
+	private void scheduleAutoAttack() {
+		if (!autoAttackEnabled) return;
+		autoAttackHandler.removeCallbacks(autoAttackStep);
+		autoAttackHandler.postDelayed(autoAttackStep, 160);
+	}
+	private void runAutoAttackStep() {
+		if (!autoAttackEnabled
+				|| !world.model.uiSelections.isInCombat
+				|| !world.model.uiSelections.isPlayersCombatTurn
+				|| fleeingWithoutAnki
+				|| ankiQuizGateActive
+				|| controllers.effectController.isRunningVisualEffect()
+				|| ankiAuthorizedMode < 1
+				|| !hasAnkiMomentumAttack()
+				|| !world.model.player.hasAPs(world.model.player.getAttackCost())
+				|| !isAutoAttackHealthSafe()) return;
+		// Stage 3 is bound to one reviewed enemy. Switching targets must
+		// request another card, and must never automatically attack it.
+		if (world.model.uiSelections.selectedMonster == null) return;
+		executePlayerAttack();
+	}
+	private boolean isAutoAttackHealthSafe() {
+		int percent = 30;
+		try {
+			percent = Integer.parseInt(android.preference.PreferenceManager
+					.getDefaultSharedPreferences(controllers.getContext())
+					.getString("anki_momentum_pause_hp", "30"));
+		} catch (Exception ignored) {}
+		return percent <= 0 || world.model.player.getMaxHP() <= 0
+				|| (long) world.model.player.getCurrentHP() * 100L
+					> (long) world.model.player.getMaxHP() * percent;
+	}
+
 
 	public int getAnkiMomentumStage() { return ankiMomentumStage; }
 	public int getAnkiMomentumCorrectStreak() { return ankiMomentumCorrectStreak; }
@@ -200,6 +244,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		resetCombatState();
 
 		if (whoseTurn != BeginTurnAs.continueLastTurn) {
+			if (!wasAlreadyInCombat) setAutoAttackEnabled(false);
 			// Monster re-engagement during an escape must not cancel flee intent.
 			if (!wasAlreadyInCombat) fleeingWithoutAnki = false;
 			resetAnkiMomentum();
@@ -220,6 +265,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		exitCombat(pickupLootBags, false);
 	}
 	public void exitCombat(boolean pickupLootBags, boolean canceledCombat) {
+		setAutoAttackEnabled(false);
 		fleeingWithoutAnki = false;
 		ankiQuizGateActive = false;
 		quizAttackEndsTurn = false;
@@ -440,8 +486,9 @@ public final class CombatController implements VisualEffectCompletedCallback {
 			quizAttackEndsTurn = true;
 			executePlayerAttack();
 		} else {
-			// Stage 2/3 unlocks normal combat; no free automatic attack.
+			// Stage 2/3 unlocks normal combat; auto attack is optional.
 			quizAttackEndsTurn = false;
+			scheduleAutoAttack();
 		}
 
 	}
@@ -514,6 +561,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
         playerActionCompleted();
         if (world.model.uiSelections.isInCombat && world.model.uiSelections.isPlayersCombatTurn) {
             continueMomentumOrRequestCard();
+            if (!ankiMomentumNeedsCard()) scheduleAutoAttack();
         }
 	}
 
@@ -817,6 +865,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 		world.model.uiSelections.isPlayersCombatTurn = true;
 		if (ankiAuthorizedMode == 1 || ankiAuthorizedMode == 0) ankiAuthorizedMode = -1;
 		combatTurnListeners.onNewPlayerTurn();
+		if (!ankiMomentumNeedsCard()) scheduleAutoAttack();
 	}
 
 	private static boolean hasCriticalAttack(Actor attacker, Actor target) {
@@ -968,6 +1017,7 @@ public final class CombatController implements VisualEffectCompletedCallback {
 	}
 
 	public void startFlee() {
+		setAutoAttackEnabled(false);
 		// Always cancel an unresolved quiz (including a card currently loading),
 		// without grading it, spending AP, or starting another card.
 		fleeingWithoutAnki = true;
